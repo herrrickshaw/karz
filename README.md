@@ -1,5 +1,7 @@
 # KARZ — Data Validation & Verification Framework
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/herrrickshaw/karz/blob/main/notebooks/colab_test.ipynb)
+
 **Complete data validation, consistency checking, and leakage detection system for stock screening and backtesting projects.**
 
 ![Status](https://img.shields.io/badge/Status-Production%20Ready-green)
