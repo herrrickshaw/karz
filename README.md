@@ -149,6 +149,13 @@ python3 repo_data_analyzer.py
 
 ---
 
+## ⚠️ Known Gotchas
+
+- **Pandas truthiness on DataFrames/NaN isn't what you'd expect.** `if df:` raises `ValueError`, and `x or default` silently keeps `x` when it's `NaN` — `NaN` is truthy in Python, so a `None`-fallback pattern never fires. Check explicitly (`df is None or df.empty`, `pd.notna(x)`) instead of relying on `or`/bare `if df:` when extending `data_config.py`'s validation rules.
+- **Treat flags as a checklist, not an autopilot.** The leakage scan above already found 6 flags, mostly false positives — review and apply each `data_validator.py`/`repo_data_analyzer.py` finding individually rather than bulk-fixing off the tool's say-so.
+
+---
+
 ## 🔄 Common Usage Patterns
 
 ### Pattern 1: Add Splits to a Backtest
