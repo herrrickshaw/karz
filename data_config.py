@@ -212,8 +212,9 @@ class DataValidationRules:
 
         # Check price movement sanity
         if 'close' in df.columns:
-            df['returns'] = df['close'].pct_change()
-            extreme = (df['returns'].abs() > DataValidationRules.MAX_DAILY_MOVE_PCT).sum()
+            returns = df['close'].pct_change()   # local: never mutate the caller's frame
+            # MAX_DAILY_MOVE_PCT is in percent; pct_change() is a fraction
+            extreme = (returns.abs() > DataValidationRules.MAX_DAILY_MOVE_PCT / 100).sum()
             if extreme > len(df) * 0.01:  # More than 1% extreme moves
                 msg = f"{extreme} extreme daily moves (>{DataValidationRules.MAX_DAILY_MOVE_PCT}%)"
                 errors.append(msg)

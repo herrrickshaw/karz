@@ -177,23 +177,26 @@ class WeightBacktester:
 
         # Define "outperform" as return > median
         median_return = np.median(actual_returns)
-        actual_outperform = (actual_returns > median_return).astype(int)
+        actual_outperform = np.asarray(actual_returns > median_return, dtype=bool)
+        # Boolean masks: on int 0/1 arrays `~` is bitwise NOT (~0 == -1), which
+        # made tn negative and accuracy wrong.
+        signals = np.asarray(signals).astype(bool)
 
         # Calculate metrics
-        n_signals = np.sum(signals)
-        n_outperform = np.sum(actual_outperform)
+        n_signals = int(np.sum(signals))
+        n_outperform = int(np.sum(actual_outperform))
 
         # True positives: we said BUY and company outperformed
-        tp = np.sum(signals & actual_outperform)
+        tp = int(np.sum(signals & actual_outperform))
 
         # False positives: we said BUY but company underperformed
-        fp = np.sum(signals & ~actual_outperform)
+        fp = int(np.sum(signals & ~actual_outperform))
 
         # False negatives: we said SELL but company outperformed
-        fn = np.sum(~signals & actual_outperform)
+        fn = int(np.sum(~signals & actual_outperform))
 
         # True negatives: we said SELL and company underperformed
-        tn = np.sum(~signals & ~actual_outperform)
+        tn = int(np.sum(~signals & ~actual_outperform))
 
         # Calculate metrics
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0
@@ -202,8 +205,9 @@ class WeightBacktester:
         accuracy = (tp + tn) / len(signals)
 
         # Return statistics
-        buy_returns = actual_returns[signals == 1]
-        sell_returns = actual_returns[signals == 0]
+        actual_returns = np.asarray(actual_returns, dtype=float)
+        buy_returns = actual_returns[signals]
+        sell_returns = actual_returns[~signals]
 
         avg_buy_return = np.mean(buy_returns) if len(buy_returns) > 0 else 0
         avg_sell_return = np.mean(sell_returns) if len(sell_returns) > 0 else 0

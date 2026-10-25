@@ -413,10 +413,9 @@ class RepositoryDataAnalyzer:
     @staticmethod
     def _extract_string_arg(arg_node) -> Optional[str]:
         """Extract string literal from AST node."""
+        # ast.Constant covers string literals on 3.8+; ast.Str was removed in 3.12
         if isinstance(arg_node, ast.Constant) and isinstance(arg_node.value, str):
             return arg_node.value
-        elif isinstance(arg_node, ast.Str):  # Python 3.7 compat
-            return arg_node.s
         return None
 
 

@@ -216,9 +216,13 @@ class DataValidator:
         """Scan for CSV files in project."""
         sources = []
         # Search common data directories
+        seen = set()
         for pattern in ["**/*.csv", "data/**/*.csv", "**/results/**/*.csv"]:
             csv_files = list(self.base_path.glob(pattern))
             for cf in csv_files[:10]:  # Limit to avoid noise
+                if cf in seen:     # the patterns overlap; count each file once
+                    continue
+                seen.add(cf)
                 try:
                     df = pd.read_csv(cf, nrows=1000)  # Sample for metadata
                     metadata = DataSourceMetadata(
@@ -375,10 +379,12 @@ class DataValidator:
                         for sname2, df2 in dfs[i+1:]:
                             # Merge on date and compare close
                             if 'close' in df1.columns and 'close' in df2.columns:
-                                common_dates = pd.to_datetime(
+                                # sorted list: pd.to_datetime(set) raises TypeError, which the
+                                # bare except below swallowed, so no pair was ever compared
+                                common_dates = pd.to_datetime(sorted(
                                     set(pd.to_datetime(df1['date'] if 'date' in df1.columns else df1.index)) &
                                     set(pd.to_datetime(df2['date'] if 'date' in df2.columns else df2.index))
-                                )
+                                ))
 
                                 for date in list(common_dates)[:5]:  # Sample
                                     val1 = df1[df1['date'] == date]['close'].values
@@ -485,7 +491,10 @@ class DataValidator:
 
         total_records = sum(s.record_count for s in sources)
         total_symbols = sum(s.symbols_count for s in sources)
-        avg_quality = np.mean([s.data_quality_score for s in sources])
+        # Only sources that were actually loaded and checked have a score; the
+        # hard-coded, never-downloaded Kaggle entries would otherwise count as 0%.
+        scored = [s.data_quality_score for s in sources if s.source_type in ("parquet", "csv")]
+        avg_quality = float(np.mean(scored)) if scored else 0.0
 
         summary = self._generate_summary(
             sources, cross_issues, leakage_issues, repo_mapping
