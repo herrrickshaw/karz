@@ -375,10 +375,12 @@ class DataValidator:
                         for sname2, df2 in dfs[i+1:]:
                             # Merge on date and compare close
                             if 'close' in df1.columns and 'close' in df2.columns:
-                                common_dates = pd.to_datetime(
+                                # sorted list: pd.to_datetime(set) raises TypeError, which the
+                                # bare except below swallowed, so no pair was ever compared
+                                common_dates = pd.to_datetime(sorted(
                                     set(pd.to_datetime(df1['date'] if 'date' in df1.columns else df1.index)) &
                                     set(pd.to_datetime(df2['date'] if 'date' in df2.columns else df2.index))
-                                )
+                                ))
 
                                 for date in list(common_dates)[:5]:  # Sample
                                     val1 = df1[df1['date'] == date]['close'].values
