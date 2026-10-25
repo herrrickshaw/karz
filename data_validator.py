@@ -491,7 +491,10 @@ class DataValidator:
 
         total_records = sum(s.record_count for s in sources)
         total_symbols = sum(s.symbols_count for s in sources)
-        avg_quality = np.mean([s.data_quality_score for s in sources])
+        # Only sources that were actually loaded and checked have a score; the
+        # hard-coded, never-downloaded Kaggle entries would otherwise count as 0%.
+        scored = [s.data_quality_score for s in sources if s.source_type in ("parquet", "csv")]
+        avg_quality = float(np.mean(scored)) if scored else 0.0
 
         summary = self._generate_summary(
             sources, cross_issues, leakage_issues, repo_mapping
