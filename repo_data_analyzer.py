@@ -437,6 +437,12 @@ class DataSplitValidator:
         """Validate chronological train/val/test split."""
         import pandas as pd
 
+        if abs(train_ratio + val_ratio + test_ratio - 1.0) > 1e-9:
+            raise ValueError(
+                f"train/val/test ratios must sum to 1.0, got "
+                f"{train_ratio} + {val_ratio} + {test_ratio}"
+            )
+
         df_sorted = df.sort_values(date_col)
         n = len(df_sorted)
 
