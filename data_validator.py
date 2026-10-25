@@ -216,9 +216,13 @@ class DataValidator:
         """Scan for CSV files in project."""
         sources = []
         # Search common data directories
+        seen = set()
         for pattern in ["**/*.csv", "data/**/*.csv", "**/results/**/*.csv"]:
             csv_files = list(self.base_path.glob(pattern))
             for cf in csv_files[:10]:  # Limit to avoid noise
+                if cf in seen:     # the patterns overlap; count each file once
+                    continue
+                seen.add(cf)
                 try:
                     df = pd.read_csv(cf, nrows=1000)  # Sample for metadata
                     metadata = DataSourceMetadata(
