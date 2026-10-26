@@ -62,8 +62,12 @@ class DateSplits:
     @classmethod
     def validate_no_overlap(cls) -> bool:
         """Ensure splits don't overlap."""
-        assert cls.TRAIN_END < cls.VAL_START, "Train-Val overlap!"
-        assert cls.VAL_END < cls.TEST_START, "Val-Test overlap!"
+        # Explicit raises: `assert` is stripped under `python -O`, which would
+        # let overlapping splits pass silently.
+        if not cls.TRAIN_END < cls.VAL_START:
+            raise ValueError("Train-Val overlap!")
+        if not cls.VAL_END < cls.TEST_START:
+            raise ValueError("Val-Test overlap!")
         return True
 
 
@@ -310,7 +314,9 @@ class FreshnessRequirements:
         requirement: Dict
     ) -> Tuple[bool, str]:
         """Check if data meets freshness requirement."""
-        now = datetime.now()
+        # Compare in the same timezone as the input; a naive `now()` against an
+        # aware timestamp raises TypeError.
+        now = datetime.now(source_last_updated.tzinfo)
 
         if "max_age_minutes" in requirement:
             age = (now - source_last_updated).total_seconds() / 60
