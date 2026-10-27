@@ -8,7 +8,7 @@
 
 **Complete data validation, consistency checking, and leakage detection system for stock screening and backtesting projects.**
 
-![Status](https://img.shields.io/badge/Status-Production%20Ready-green)
+![Status](https://img.shields.io/badge/Status-Research%20tooling-blue)
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
@@ -25,11 +25,13 @@ KARZ provides a comprehensive framework to ensure **data integrity, consistency,
 - ✅ **Automation** — Quick setup, zero manual configuration
 
 ### Key Stats
-- 📊 **9M+ records** validated across 40 data sources
-- 🎯 **79K+ unique symbols** from global markets
-- ✅ **86% quality score** (36/40 sources >80%)
-- ⚡ **0 cross-source discrepancies** >2%
-- 🔒 **Prevents data leakage** in backtests
+From one `data_validator.py` run on the author's local data (2015–2024). The data is not in this repo, so these figures can't be reproduced from a clone; the per-market breakdown is in [`DATA_VALIDATION_IMPLEMENTATION_ROADMAP.md`](DATA_VALIDATION_IMPLEMENTATION_ROADMAP.md#-validation-results-summary).
+
+- 📊 **9M+ records** across 40 data sources (India 1.2M, US 2.2M, global 5.7M)
+- 🎯 **79K+ unique symbols**
+- ✅ **85.75% average quality score** (36 of 40 sources above 80%)
+- ⚡ **0 cross-source close-price discrepancies above 2%** in that run
+- 🔒 **Flags leakage patterns** in backtest scripts (6 flags in that run)
 
 ---
 
@@ -79,7 +81,7 @@ results = model.backtest(test_df)  # Unseen data only
 
 **`data_validator.py`** — Data Quality & Consistency
 - Inventories all parquet/CSV data sources
-- Validates 100% of data exhaustively
+- Checks every row, not a sample
 - Checks OHLC sanity, nulls, duplicates, price continuity
 - Compares across sources (detects >2% discrepancies)
 - Detects potential data leakage patterns
@@ -139,7 +141,7 @@ python3 repo_data_analyzer.py
 
 **data_validator.py output:**
 - ✅ Inventories all data sources (40 sources found)
-- ✅ Quality scores per source (avg 86%)
+- ✅ Quality scores per source (avg 85.75% in the run above)
 - ✅ Cross-source consistency issues (0 major)
 - ✅ Data leakage patterns (6 flags, mostly false positives)
 - ✅ Repository mapping (which scripts use which data)
@@ -298,7 +300,7 @@ class Universe:
 df = pd.read_parquet("all_data.parquet")  # All 3-5 years
 model.fit(df)
 results = model.backtest(df)              # ❌ On same data!
-# Result: 15% annual return (overfitted)
+# Illustrative only, not a measured result: e.g. 15% annual return (in-sample)
 ```
 
 ### After KARZ
@@ -308,8 +310,8 @@ test_df = filter_data_by_split(df, "date", split="test")
 
 model.fit(train_df)
 results = model.backtest(test_df)         # ✅ Unseen data only
-# Result: 9% annual return (realistic)
-# Difference = 6pp = overfitting impact
+# Illustrative only: e.g. 9% annual return out of sample
+# The gap between the two is the overfitting you would otherwise miss
 ```
 
 ---
@@ -387,7 +389,7 @@ Framework is working well when:
 
 - ✅ All scripts import from `data_config`
 - ✅ All backtests use TEST split by default
-- ✅ Data validation runs weekly (catches 100% of issues)
+- ✅ Data validation runs weekly
 - ✅ Zero data leakage in production backtests
 - ✅ Team uses centralized split definitions
 - ✅ Backtest results are realistic (not overfitted)
@@ -404,7 +406,7 @@ MIT License — Free to use and modify
 
 Created: July 3, 2024  
 Framework: KARZ (Data Validation & Verification)  
-Status: ✅ Production Ready
+Status: research tooling, used on the author's own screening and backtest pipelines
 
 ---
 
