@@ -16,17 +16,64 @@ Usage:
     report.save_report("data_validation_report.json")
 """
 
-import json
-import os
+from __future__ import annotations
+
 import hashlib
+import json
+import logging
+import re
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
-import warnings
+from typing import Any, Dict, List, Optional, Tuple
 
-import pandas as pd
 import numpy as np
-from dataclasses import dataclass, asdict, field
+import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+# Default project root scanned when no ``base_path`` is given (owner's local checkout).
+DEFAULT_BASE_PATH = "/Users/umashankar/Downloads/code/python_files"
+
+# Sampling limits that keep a full run fast; they bound, not define, the validation.
+MAX_CSV_FILES_PER_PATTERN = 10
+CSV_METADATA_SAMPLE_ROWS = 1000
+MAX_CROSS_SOURCE_SYMBOLS = 20
+MAX_CROSS_SOURCE_DATES = 5
+MAX_LEAKAGE_SCAN_FILES = 50
+MAX_MAPPING_SCAN_FILES = 30
+
+# Quality-check thresholds.
+HIGH_NULL_SHARE = 0.1
+MAX_DATE_GAP_DAYS = 5
+MAX_ALLOWED_GAPS = 10
+STALE_AFTER_DAYS = 30
+CROSS_SOURCE_TOLERANCE = 0.02
+SCORE_PENALTY_PER_ERROR = 0.1
+
+# Regexes (per line) suggesting look-ahead or train/test contamination; flagged for human review.
+LEAKAGE_PATTERNS: Dict[str, List[str]] = {
+    "future_data": [
+        r"\.shift\(-\d+\)",  # Negative shift = looking forward
+        r"\.rolling\(.*\)\.mean\(\).*\[-1\]",  # Future-looking rolling
+    ],
+    "test_in_train": [
+        r"test.*=.*\[:len",  # Overlapping splits
+        r"train.*=.*all_data",  # Training on all data
+    ],
+    "unfair_split": [
+        r"split.*random_state.*=.*None",  # Non-reproducible split
+        r"sample\(\).*frac",  # Random sampling without seed
+    ],
+}
+
+# Stock-market datasets listed (not downloaded) as Kaggle sources.
+KAGGLE_STOCK_DATASETS = [
+    "sudalairajkumar/stock-market-data",
+    "finnhub/stock-market-data",
+    "rohanrao/nifty50-stock-market-data",
+    "jacksoncrow/stock-market-dataset",
+]
 
 
 @dataclass
@@ -93,13 +140,13 @@ class ValidationReport:
         """Convert to dictionary."""
         return asdict(self)
 
-    def save_report(self, path: str):
+    def save_report(self, path: str) -> None:
         """Save report to JSON."""
         with open(path, 'w') as f:
             json.dump(self.to_dict(), f, indent=2, default=str)
         print(f"Report saved to {path}")
 
-    def print_summary(self):
+    def print_summary(self) -> None:
         """Print human-readable summary."""
         print("\n" + "="*60)
         print("DATA VALIDATION REPORT SUMMARY")
@@ -114,10 +161,73 @@ class ValidationReport:
         print(f"\n{self.summary}")
 
 
+def check_dataframe_quality(df: pd.DataFrame) -> List[str]:
+    """Return human-readable quality problems found in one OHLCV-style frame.
+
+    Checks nulls, duplicate rows, numeric OHLCV dtypes, ``high < low``, date gaps and staleness.
+    Note: a ``date``/``Date`` column is converted to datetime in place.
+    """
+    errors: List[str] = []
+
+    missing_pct = df.isnull().sum() / len(df)
+    if (missing_pct > HIGH_NULL_SHARE).any():
+        errors.append(f"High nulls in {missing_pct[missing_pct > HIGH_NULL_SHARE].index.tolist()}")
+
+    duplicates = df.duplicated().sum()
+    if duplicates > 0:
+        errors.append(f"{duplicates} duplicate rows found")
+
+    for col in df.columns:
+        if col.lower() in ['open', 'high', 'low', 'close', 'volume']:
+            if not pd.api.types.is_numeric_dtype(df[col]):
+                errors.append(f"Column '{col}' should be numeric but is {df[col].dtype}")
+
+    if all(c in df.columns for c in ['open', 'high', 'low', 'close']):
+        invalid = (df['high'] < df['low']).sum()
+        if invalid > 0:
+            errors.append(f"{invalid} rows with high < low (invalid OHLC)")
+
+    if 'date' in df.columns or 'Date' in df.columns:
+        date_col = 'date' if 'date' in df.columns else 'Date'
+        df[date_col] = pd.to_datetime(df[date_col])
+        gaps = (df[date_col].diff() > timedelta(days=MAX_DATE_GAP_DAYS)).sum()
+        if gaps > MAX_ALLOWED_GAPS:
+            errors.append(f"Many date gaps detected ({gaps} gaps > {MAX_DATE_GAP_DAYS} days)")
+
+        max_date = pd.to_datetime(df[date_col]).max()
+        days_stale = (datetime.now().date() - max_date.date()).days
+        if days_stale > STALE_AFTER_DAYS:
+            errors.append(f"Data is {days_stale} days stale (last date: {max_date.date()})")
+
+    return errors
+
+
+def quality_score(errors: List[str]) -> float:
+    """Score in [0, 1]: 1.0 minus 0.1 per problem found."""
+    return max(0, 1.0 - (len(errors) * SCORE_PENALTY_PER_ERROR))
+
+
+def scan_text_for_leakage(file_path: str, text: str) -> List[DataLeakageIssue]:
+    """Flag lines of source ``text`` that match any LEAKAGE_PATTERNS entry (severity ``low``)."""
+    issues: List[DataLeakageIssue] = []
+    lines = text.split('\n')
+    for issue_type, patterns in LEAKAGE_PATTERNS.items():
+        for pattern in patterns:
+            for i, line in enumerate(lines):
+                if re.search(pattern, line):
+                    issues.append(DataLeakageIssue(
+                        file_path=file_path,
+                        line_number=i + 1,
+                        issue_type=issue_type,
+                        severity="low",  # Flag for review
+                    ))
+    return issues
+
+
 class DataValidator:
     """Main validation coordinator."""
 
-    def __init__(self, base_path: str = "/Users/umashankar/Downloads/code/python_files"):
+    def __init__(self, base_path: str = DEFAULT_BASE_PATH):
         self.base_path = Path(base_path)
         self.cache_seed = self.base_path / "cache_seed"
         self.report = None
@@ -218,9 +328,9 @@ class DataValidator:
         # Search common data directories
         for pattern in ["**/*.csv", "data/**/*.csv", "**/results/**/*.csv"]:
             csv_files = list(self.base_path.glob(pattern))
-            for cf in csv_files[:10]:  # Limit to avoid noise
+            for cf in csv_files[:MAX_CSV_FILES_PER_PATTERN]:  # Limit to avoid noise
                 try:
-                    df = pd.read_csv(cf, nrows=1000)  # Sample for metadata
+                    df = pd.read_csv(cf, nrows=CSV_METADATA_SAMPLE_ROWS)  # Sample for metadata
                     metadata = DataSourceMetadata(
                         source_name=cf.stem,
                         source_type="csv",
@@ -234,28 +344,15 @@ class DataValidator:
                         columns=df.columns.tolist(),
                     )
                     sources.append(metadata)
-                except Exception as e:
-                    pass  # Skip files that can't be read
+                except Exception as e:  # unreadable CSVs are skipped by design
+                    logger.debug("Skipping CSV %s: %s", cf, e)
 
         return sources
 
     def _scan_kaggle_datasets(self) -> List[DataSourceMetadata]:
-        """Check for Kaggle datasets and metadata."""
-        sources = []
-        # Check if .kaggle/kaggle.json exists and list datasets
-        kaggle_meta = Path.home() / ".kaggle"
-
-        # List common stock market datasets on Kaggle
-        # Note: Requires kaggle API to be installed and authenticated
-        stock_datasets = [
-            "sudalairajkumar/stock-market-data",
-            "finnhub/stock-market-data",
-            "rohanrao/nifty50-stock-market-data",
-            "jacksoncrow/stock-market-dataset",
-        ]
-
-        for ds in stock_datasets:
-            sources.append(DataSourceMetadata(
+        """List well-known Kaggle stock datasets as placeholders (nothing is downloaded)."""
+        return [
+            DataSourceMetadata(
                 source_name=ds.split("/")[-1],
                 source_type="kaggle",
                 path=f"kaggle://{ds}",
@@ -266,12 +363,12 @@ class DataValidator:
                 symbols_count=0,
                 date_range=("unknown", "unknown"),
                 validation_errors=["Not yet downloaded"],
-            ))
+            )
+            for ds in KAGGLE_STOCK_DATASETS
+        ]
 
-        return sources
-
-    def _validate_single_source(self, metadata: DataSourceMetadata):
-        """Exhaustively validate a single data source."""
+    def _validate_single_source(self, metadata: DataSourceMetadata) -> None:
+        """Exhaustively validate a single data source, filling in its errors and quality score."""
         try:
             # Load full data
             if metadata.source_type == "parquet":
@@ -283,49 +380,9 @@ class DataValidator:
 
             self._loaded_data[metadata.source_name] = df
 
-            # Run quality checks
-            errors = []
-
-            # Check 1: Missing data analysis
-            missing_pct = df.isnull().sum() / len(df)
-            if (missing_pct > 0.1).any():
-                errors.append(f"High nulls in {missing_pct[missing_pct > 0.1].index.tolist()}")
-
-            # Check 2: Duplicate rows
-            if df.duplicated().sum() > 0:
-                errors.append(f"{df.duplicated().sum()} duplicate rows found")
-
-            # Check 3: Data types
-            for col in df.columns:
-                if col.lower() in ['open', 'high', 'low', 'close', 'volume']:
-                    if not pd.api.types.is_numeric_dtype(df[col]):
-                        errors.append(f"Column '{col}' should be numeric but is {df[col].dtype}")
-
-            # Check 4: Price sanity (OHLC order)
-            if all(c in df.columns for c in ['open', 'high', 'low', 'close']):
-                invalid = (df['high'] < df['low']).sum()
-                if invalid > 0:
-                    errors.append(f"{invalid} rows with high < low (invalid OHLC)")
-
-            # Check 5: Date continuity (for time series)
-            if 'date' in df.columns or 'Date' in df.columns:
-                date_col = 'date' if 'date' in df.columns else 'Date'
-                df[date_col] = pd.to_datetime(df[date_col])
-                gaps = (df[date_col].diff() > timedelta(days=5)).sum()
-                if gaps > 10:
-                    errors.append(f"Many date gaps detected ({gaps} gaps > 5 days)")
-
-            # Check 6: Freshness
-            if 'date' in df.columns or 'Date' in df.columns:
-                date_col = 'date' if 'date' in df.columns else 'Date'
-                max_date = pd.to_datetime(df[date_col]).max()
-                days_stale = (datetime.now().date() - max_date.date()).days
-                if days_stale > 30:
-                    errors.append(f"Data is {days_stale} days stale (last date: {max_date.date()})")
-
+            errors = check_dataframe_quality(df)
             metadata.validation_errors = errors
-            quality_score = 1.0 - (len(errors) * 0.1)  # Simple scoring
-            metadata.data_quality_score = max(0, quality_score)
+            metadata.data_quality_score = quality_score(errors)
 
             status = "✓" if not errors else "⚠️"
             print(f"  {status} {metadata.source_name}: {len(df):,} rows, "
@@ -341,136 +398,111 @@ class DataValidator:
         sources: List[DataSourceMetadata]
     ) -> List[CrossSourceIssue]:
         """Check consistency across data sources."""
-        issues = []
+        issues: List[CrossSourceIssue] = []
 
         # Find common symbols across sources
-        all_symbols = {}
+        all_symbols: Dict[Any, List[str]] = {}
         for source in sources:
             if source.source_name in self._loaded_data:
                 symbols = self._extract_symbols(self._loaded_data[source.source_name])
                 for sym in symbols:
-                    if sym not in all_symbols:
-                        all_symbols[sym] = []
-                    all_symbols[sym].append(source.source_name)
+                    all_symbols.setdefault(sym, []).append(source.source_name)
 
         # Check symbols that appear in multiple sources
-        common_symbols = {s: sources for s, sources in all_symbols.items() if len(sources) > 1}
+        common_symbols = {s: names for s, names in all_symbols.items() if len(names) > 1}
 
         print(f"  • Checking {len(common_symbols)} symbols across sources...")
 
-        for symbol, source_names in list(common_symbols.items())[:20]:  # Sample check
+        for symbol, source_names in list(common_symbols.items())[:MAX_CROSS_SOURCE_SYMBOLS]:  # Sample check
             try:
-                dfs = []
-                for sname in source_names:
-                    if sname in self._loaded_data:
-                        df = self._loaded_data[sname].copy()
-                        if 'symbol' in df.columns or 'Symbol' in df.columns:
-                            sym_col = 'symbol' if 'symbol' in df.columns else 'Symbol'
-                            df = df[df[sym_col] == symbol]
-                        dfs.append((sname, df))
-
-                # Compare close prices
-                if len(dfs) >= 2 and all(len(df) > 0 for _, df in dfs):
-                    for i, (sname1, df1) in enumerate(dfs[:-1]):
-                        for sname2, df2 in dfs[i+1:]:
-                            # Merge on date and compare close
-                            if 'close' in df1.columns and 'close' in df2.columns:
-                                common_dates = pd.to_datetime(
-                                    set(pd.to_datetime(df1['date'] if 'date' in df1.columns else df1.index)) &
-                                    set(pd.to_datetime(df2['date'] if 'date' in df2.columns else df2.index))
-                                )
-
-                                for date in list(common_dates)[:5]:  # Sample
-                                    val1 = df1[df1['date'] == date]['close'].values
-                                    val2 = df2[df2['date'] == date]['close'].values
-
-                                    if len(val1) > 0 and len(val2) > 0:
-                                        v1, v2 = float(val1[0]), float(val2[0])
-                                        if v1 > 0:
-                                            pct_diff = abs(v1 - v2) / v1
-                                            if pct_diff > 0.02:  # >2% difference
-                                                issues.append(CrossSourceIssue(
-                                                    symbol=symbol,
-                                                    date=str(date),
-                                                    source_1=sname1,
-                                                    source_2=sname2,
-                                                    field='close',
-                                                    value_1=v1,
-                                                    value_2=v2,
-                                                    discrepancy_pct=pct_diff
-                                                ))
-            except Exception as e:
-                pass  # Continue on errors
+                issues.extend(self._compare_symbol_closes(symbol, source_names))
+            except Exception as e:  # keep going: one bad symbol must not abort the run
+                logger.debug("Cross-source check skipped for %s: %s", symbol, e)
 
         print(f"  ✓ Found {len(issues)} cross-source inconsistencies")
         return issues
 
+    def _compare_symbol_closes(self, symbol: Any, source_names: List[str]) -> List[CrossSourceIssue]:
+        """Compare one symbol's close prices between every pair of sources that hold it."""
+        issues: List[CrossSourceIssue] = []
+        dfs = []
+        for sname in source_names:
+            if sname in self._loaded_data:
+                df = self._loaded_data[sname].copy()
+                if 'symbol' in df.columns or 'Symbol' in df.columns:
+                    sym_col = 'symbol' if 'symbol' in df.columns else 'Symbol'
+                    df = df[df[sym_col] == symbol]
+                dfs.append((sname, df))
+
+        if len(dfs) < 2 or not all(len(df) > 0 for _, df in dfs):
+            return issues
+
+        for i, (sname1, df1) in enumerate(dfs[:-1]):
+            for sname2, df2 in dfs[i+1:]:
+                if 'close' not in df1.columns or 'close' not in df2.columns:
+                    continue
+                # Merge on date and compare close
+                common_dates = pd.to_datetime(
+                    set(pd.to_datetime(df1['date'] if 'date' in df1.columns else df1.index)) &
+                    set(pd.to_datetime(df2['date'] if 'date' in df2.columns else df2.index))
+                )
+
+                for date in list(common_dates)[:MAX_CROSS_SOURCE_DATES]:  # Sample
+                    val1 = df1[df1['date'] == date]['close'].values
+                    val2 = df2[df2['date'] == date]['close'].values
+
+                    if len(val1) > 0 and len(val2) > 0:
+                        v1, v2 = float(val1[0]), float(val2[0])
+                        if v1 > 0:
+                            pct_diff = abs(v1 - v2) / v1
+                            if pct_diff > CROSS_SOURCE_TOLERANCE:
+                                issues.append(CrossSourceIssue(
+                                    symbol=symbol,
+                                    date=str(date),
+                                    source_1=sname1,
+                                    source_2=sname2,
+                                    field='close',
+                                    value_1=v1,
+                                    value_2=v2,
+                                    discrepancy_pct=pct_diff
+                                ))
+        return issues
+
     def _detect_data_leakage(self) -> List[DataLeakageIssue]:
         """Scan Python scripts for potential data leakage."""
-        issues = []
-
-        # Patterns that suggest data leakage
-        leakage_patterns = {
-            "future_data": [
-                r"\.shift\(-\d+\)",  # Negative shift = looking forward
-                r"\.rolling\(.*\)\.mean\(\).*\[-1\]",  # Future-looking rolling
-            ],
-            "test_in_train": [
-                r"test.*=.*\[:len",  # Overlapping splits
-                r"train.*=.*all_data",  # Training on all data
-            ],
-            "unfair_split": [
-                r"split.*random_state.*=.*None",  # Non-reproducible split
-                r"sample\(\).*frac",  # Random sampling without seed
-            ],
-        }
-
+        issues: List[DataLeakageIssue] = []
         py_files = list(self.base_path.glob("**/*.py"))
 
-        for py_file in py_files[:50]:  # Sample analysis
+        for py_file in py_files[:MAX_LEAKAGE_SCAN_FILES]:  # Sample analysis
             try:
                 with open(py_file, 'r') as f:
                     content = f.read()
-                    lines = content.split('\n')
-
-                for issue_type, patterns in leakage_patterns.items():
-                    for pattern in patterns:
-                        import re
-                        for i, line in enumerate(lines):
-                            if re.search(pattern, line):
-                                issues.append(DataLeakageIssue(
-                                    file_path=str(py_file),
-                                    line_number=i+1,
-                                    issue_type=issue_type,
-                                    severity="low",  # Flag for review
-                                ))
-            except Exception as e:
-                pass
+            except (OSError, UnicodeDecodeError) as e:
+                logger.debug("Skipping %s: %s", py_file, e)
+                continue
+            issues.extend(scan_text_for_leakage(str(py_file), content))
 
         print(f"  ✓ Scanned {len(py_files)} scripts, found {len(issues)} potential leakage flags")
         return issues
 
     def _map_repos_to_data(self, sources: List[DataSourceMetadata]) -> Dict[str, List[str]]:
         """Map which Python scripts use which data sources."""
-        mapping = {}
+        mapping: Dict[str, List[str]] = {}
 
         py_files = list(self.base_path.glob("**/*.py"))
         source_names = {s.source_name for s in sources}
 
-        for py_file in py_files[:30]:  # Sample
+        for py_file in py_files[:MAX_MAPPING_SCAN_FILES]:  # Sample
             try:
                 with open(py_file, 'r') as f:
                     content = f.read()
+            except (OSError, UnicodeDecodeError) as e:
+                logger.debug("Skipping %s: %s", py_file, e)
+                continue
 
-                used_sources = []
-                for source_name in source_names:
-                    if source_name in content:
-                        used_sources.append(source_name)
-
-                if used_sources:
-                    mapping[str(py_file)] = used_sources
-            except:
-                pass
+            used_sources = [name for name in source_names if name in content]
+            if used_sources:
+                mapping[str(py_file)] = used_sources
 
         return mapping
 
@@ -512,6 +544,9 @@ class DataValidator:
         repo_mapping: Dict[str, List[str]],
     ) -> str:
         """Generate human-readable summary."""
+        used_by_scripts = len([
+            s for s in sources if any(s.source_name in v for v in repo_mapping.values())
+        ])
         lines = [
             "\n📊 DATA QUALITY BREAKDOWN:",
             f"  • Sources with quality > 80%: {sum(1 for s in sources if s.data_quality_score > 0.8)}/{len(sources)}",
@@ -527,7 +562,7 @@ class DataValidator:
             "",
             "📍 REPOSITORY MAPPING:",
             f"  • Scripts using multiple sources: {sum(1 for files in repo_mapping.values() if len(files) > 1)}",
-            f"  • Data sources used by multiple scripts: {len([s for s in sources if any(s.source_name in v for v in repo_mapping.values())])}",
+            f"  • Data sources used by multiple scripts: {used_by_scripts}",
         ]
 
         return "\n".join(lines)
@@ -548,13 +583,13 @@ class DataValidator:
                 try:
                     dates = pd.to_datetime(df[col])
                     return (str(dates.min().date()), str(dates.max().date()))
-                except:
-                    pass
+                except (ValueError, TypeError, AttributeError) as e:
+                    logger.debug("Could not parse dates in column %s: %s", col, e)
         return ("unknown", "unknown")
 
     @staticmethod
     def _compute_file_hash(path: Path, algorithm: str = "sha256") -> str:
-        """Compute file hash."""
+        """Compute the SHA-256 hex digest of a file (``algorithm`` is accepted but ignored)."""
         hasher = hashlib.sha256()
         with open(path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
@@ -571,8 +606,8 @@ class KaggleDataIntegrator:
 
     @staticmethod
     def discover_relevant_datasets(
-        markets: List[str] = None,
-        categories: List[str] = None,
+        markets: Optional[List[str]] = None,
+        categories: Optional[List[str]] = None,
     ) -> List[Dict]:
         """Discover relevant stock datasets on Kaggle."""
 
@@ -619,7 +654,7 @@ class DataLineageTracker:
     def __init__(self):
         self.lineage = {}
 
-    def track_load(self, source: str, target_name: str, df: pd.DataFrame):
+    def track_load(self, source: str, target_name: str, df: pd.DataFrame) -> None:
         """Track data loading."""
         self.lineage[target_name] = {
             "source": source,
@@ -628,7 +663,7 @@ class DataLineageTracker:
             "columns": df.columns.tolist(),
         }
 
-    def track_transform(self, source_name: str, target_name: str, operation: str):
+    def track_transform(self, source_name: str, target_name: str, operation: str) -> None:
         """Track data transformation."""
         if source_name not in self.lineage:
             self.lineage[source_name] = {}
