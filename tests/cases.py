@@ -48,7 +48,8 @@ def _capture(fn: Callable[[], Any], root: str) -> Dict[str, Any]:
         value = fn()
     out = buf.getvalue().replace(root, "<ROOT>")
     # Per-run wall-clock text in stdout (dates derived from "now") is not comparable.
-    out = "\n".join(l for l in out.splitlines() if "Date range:" not in l and not l.startswith("Generated:"))
+    out = "\n".join(
+        line for line in out.splitlines() if "Date range:" not in line and not line.startswith("Generated:"))
     return {"value": _scrub(value, root), "stdout": out}
 
 
@@ -170,8 +171,9 @@ def case_repo_data_analyzer() -> Dict[str, Any]:
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             report.print_report()
-        res["printed"] = "\n".join(l for l in buf.getvalue().replace(tmp, "<ROOT>").splitlines()
-                                  if not l.startswith("Generated:"))
+        res["printed"] = "\n".join(
+            line for line in buf.getvalue().replace(tmp, "<ROOT>").splitlines()
+            if not line.startswith("Generated:"))
         out = root / "r.json"
         report.save_report(str(out))
         res["saved_keys"] = sorted(json.loads(out.read_text()))
@@ -221,7 +223,7 @@ def case_backtest_weight_optimization() -> Dict[str, Any]:
         res["csv"] = csv.read_text()
         for ws in ("baseline", "optimized"):
             o2: Dict[str, Any] = {}
-            res["run_" + ws] = _capture(lambda: o2.update(bt.run_backtest(ws)), tmp)["stdout"]
+            res["run_" + ws] = _capture(lambda o2=o2, ws=ws: o2.update(bt.run_backtest(ws)), tmp)["stdout"]
             res["keys_" + ws] = sorted(o2)
         # data-source driver
         data = _score_frame(80, 6)
