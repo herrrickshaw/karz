@@ -1,437 +1,110 @@
-# KARZ — Data Validation & Verification Framework
+# KARZ — data validation and leakage checks for stock-screening backtests
 
-<!-- how-to-use-with-ai -->
-> **New here?** See [How to use this repo with AI (Claude, Gemini, ChatGPT)](HOW_TO_USE_WITH_AI.md) — clone it, paste it into an AI tool, and ask in plain English.
+KARZ is a small set of Python modules that inventory the price/fundamentals files behind a stock-screening
+project, run data-quality and cross-source checks on them, scan analysis scripts for train/test leakage, and
+provide one place (`data_config.py`) that defines chronological train/validation/test date splits. It targets
+the owner's multi-market (India, US, China, Japan, Korea, Australia, Europe) screener data and produces JSON
+reports plus helper functions for fair backtests.
 
+> Status: maintained, research tooling. Educational use only; not investment advice. The figures quoted in the
+> older docs (9M+ records, 40 sources, 86% quality) came from runs on a private local data tree that is not part
+> of this repository, so they cannot be reproduced from a clone.
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/herrrickshaw/karz/blob/main/notebooks/colab_test.ipynb)
+## What it does
+- `data_validator.py` inventories parquet/CSV sources, runs null / duplicate / dtype / `high < low` / date-gap /
+  staleness checks, scores each source, and writes a JSON report.
+- `data_validator.py` also flags source lines that look like look-ahead (`shift(-n)`) or train/test contamination.
+- `repo_data_analyzer.py` parses Python scripts with `ast` to map which scripts read/write which data files,
+  whether they split train/test, and whether they test on samples.
+- `data_config.py` holds the single definition of the date splits (TRAIN 2015-01-01..2021-12-31,
+  VAL 2022, TEST 2023-01-01..2024-06-30), validation thresholds, freshness presets and the data-source registry.
+- `backtest_weight_optimization.py` compares two weight sets for an 8-dimension score on the TEST split
+  (precision, recall, F1, accuracy, buy/sell return spread).
+- `backtest_weight_validation.py` builds a z-scored fundamentals composite and reports quintile performance.
 
-**Complete data validation, consistency checking, and leakage detection system for stock screening and backtesting projects.**
-
-![Status](https://img.shields.io/badge/Status-Production%20Ready-green)
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![License](https://img.shields.io/badge/License-MIT-blue)
-
----
-
-## 🎯 Overview
-
-KARZ provides a comprehensive framework to ensure **data integrity, consistency, and fair evaluation** across stock screening and backtesting projects:
-
-- ✅ **Data Validation** — Exhaustive quality checks (not samples)
-- ✅ **Consistency Checks** — Cross-source verification (yfinance, Bhavcopy, Kaggle)
-- ✅ **Leakage Prevention** — Proper train/test splits to avoid overfitting
-- ✅ **Standardization** — Single source of truth for data rules
-- ✅ **Automation** — Quick setup, zero manual configuration
-
-### Key Stats
-- 📊 **9M+ records** validated across 40 data sources
-- 🎯 **79K+ unique symbols** from global markets
-- ✅ **86% quality score** (36/40 sources >80%)
-- ⚡ **0 cross-source discrepancies** >2%
-- 🔒 **Prevents data leakage** in backtests
-
----
-
-## 🚀 Quick Start (5 minutes)
-
-### 1. Install Dependencies
+## Quick start
 ```bash
-pip install pandas numpy scikit-learn
-```
-
-### 2. Copy Files to Your Project
-```bash
-cp data_validator.py repo_data_analyzer.py data_config.py /path/to/your/project/
-```
-
-### 3. Run Validation
-```bash
-python3 data_validator.py      # Check all data sources
-python3 repo_data_analyzer.py  # Analyze script patterns
-```
-
-### 4. Use in Your Scripts
-```python
-from data_config import DataConfig, filter_data_by_split
-import pandas as pd
-
-# Load & validate data
-df = pd.read_parquet("data.parquet")
-config = DataConfig()
-errors = config.validation.validate_dataframe(df)
-assert not errors, f"Data failed validation: {errors}"
-
-# Split for fair backtesting
-train_df = filter_data_by_split(df, "date", split="train")
-test_df = filter_data_by_split(df, "date", split="test")
-
-# Run backtest
-model.fit(train_df)
-results = model.backtest(test_df)  # Unseen data only
-```
-
----
-
-## 📦 What's Included
-
-### Core Modules (3 files)
-
-**`data_validator.py`** — Data Quality & Consistency
-- Inventories all parquet/CSV data sources
-- Validates 100% of data exhaustively
-- Checks OHLC sanity, nulls, duplicates, price continuity
-- Compares across sources (detects >2% discrepancies)
-- Detects potential data leakage patterns
-- Discovers Kaggle datasets
-
-**`repo_data_analyzer.py`** — Repository Analysis
-- Analyzes Python scripts for data patterns
-- Maps which scripts use which data sources
-- Identifies missing train/test splits
-- Flags sample vs exhaustive testing
-- Generates actionable recommendations
-- Creates data dependency graphs
-
-**`data_config.py`** — Configuration & Rules
-- Chronological date splits (TRAIN/VAL/TEST)
-- Data validation rules (nulls, OHLC, price moves)
-- Freshness requirements (15 min to 365 days)
-- Consistency thresholds (price, volume, overlap)
-- Universe definitions (symbols to analyze)
-- Helper functions for splits & validation
-
-### Fixed Backtest Scripts (2 files)
-
-**`backtest_weight_optimization.py`** — Compare weight sets  
-**`backtest_weight_validation.py`** — Validate fundamentals composite
-
-Both now use proper train/test splits to prevent data leakage.
-
-### Documentation (8 files)
-
-| Document | Purpose | Read Time |
-|----------|---------|-----------|
-| `DATA_VALIDATION_QUICKSTART.md` | 5-min overview & checklist | 5 min |
-| `DATA_VALIDATION_GUIDE.md` | Complete implementation guide | 30 min |
-| `DATA_VALIDATION_HONEST_SUMMARY.md` | Realistic assessment & priorities | 15 min |
-| `DATA_VALIDATION_IMPLEMENTATION_ROADMAP.md` | 4-week action plan | 20 min |
-| `FIXED_SCRIPTS_SUMMARY.md` | Status of fixed backtest scripts | 10 min |
-| `IMPLEMENTATION_STATUS.md` | Framework completeness report | 10 min |
-| `BACKTEST_TEMPLATE_CHANGES.md` | Template for fixing other scripts | 15 min |
-| `TEMPLATE_FIX_SUMMARY.md` | Quick reference | 5 min |
-
----
-
-## 📊 Validation Reports
-
-Both validators generate detailed JSON reports:
-
-```bash
-# Generate comprehensive reports
-python3 data_validator.py
-python3 repo_data_analyzer.py
-
-# Reports saved to:
-# /tmp/data_validation_report.json
-# /tmp/repo_data_analysis.json
-```
-
-**data_validator.py output:**
-- ✅ Inventories all data sources (40 sources found)
-- ✅ Quality scores per source (avg 86%)
-- ✅ Cross-source consistency issues (0 major)
-- ✅ Data leakage patterns (6 flags, mostly false positives)
-- ✅ Repository mapping (which scripts use which data)
-
-**repo_data_analyzer.py output:**
-- ✅ Script-by-script analysis (100+ scripts)
-- ✅ Data usage patterns (sources loaded per script)
-- ✅ Train/test split issues (30 scripts need fixes)
-- ✅ Sample vs exhaustive testing (25 scripts need conversion)
-- ✅ Actionable recommendations (prioritized by impact)
-
----
-
-## ⚠️ Known Gotchas
-
-- **Pandas truthiness on DataFrames/NaN isn't what you'd expect.** `if df:` raises `ValueError`, and `x or default` silently keeps `x` when it's `NaN` — `NaN` is truthy in Python, so a `None`-fallback pattern never fires. Check explicitly (`df is None or df.empty`, `pd.notna(x)`) instead of relying on `or`/bare `if df:` when extending `data_config.py`'s validation rules.
-- **Treat flags as a checklist, not an autopilot.** The leakage scan above already found 6 flags, mostly false positives — review and apply each `data_validator.py`/`repo_data_analyzer.py` finding individually rather than bulk-fixing off the tool's say-so.
-
----
-
-## 🔄 Common Usage Patterns
-
-### Pattern 1: Add Splits to a Backtest
-```python
-from data_config import filter_data_by_split
-import pandas as pd
-
-df = pd.read_parquet("data.parquet")
-
-# Split properly (no leakage)
-train_df = filter_data_by_split(df, "date", split="train")
-test_df = filter_data_by_split(df, "date", split="test")
-
-# Train on historical, test on recent
-model.fit(train_df)
-results = model.backtest(test_df)
-```
-
-### Pattern 2: Validate Data Quality
-```python
-from data_config import DataConfig
-
-config = DataConfig()
-df = pd.read_parquet("data.parquet")
-
-# Automatic quality checks
-errors = config.validation.validate_dataframe(df)
-if errors:
-    print("⚠️  Issues found:")
-    for error in errors:
-        print(f"  • {error}")
-else:
-    print("✅ Data passes all checks")
-```
-
-### Pattern 3: Check Freshness
-```python
-from datetime import datetime
-from data_config import DataConfig
-
-config = DataConfig()
-source_age = datetime.now() - source_last_modified
-
-# Check against requirement
-fresh, msg = config.freshness.check_freshness(
-    source_age, 
-    config.freshness.DAILY_SCREENER  # max 24 hours old
-)
-print(msg)  # "Age: 2.3 hours (max: 24 hours)"
-```
-
-### Pattern 4: Verify Cross-Source Consistency
-```python
-import pandas as pd
-from data_config import DataConfig
-
-config = DataConfig()
-df1 = pd.read_parquet("source1.parquet")  # Bhavcopy
-df2 = pd.read_parquet("source2.parquet")  # yfinance
-
-# Check consistency
-for date in common_dates:
-    price_diff = abs(df1_close - df2_close) / df1_close
-    acceptable = config.consistency.acceptable_difference(
-        df1_close, df2_close, tolerance_pct=2.0
-    )
-    assert acceptable, f"Price mismatch on {date}"
-```
-
----
-
-## 🎯 Date Splits Explained
-
-```python
-from data_config import DateSplits
-
-# These splits prevent data leakage and enable fair evaluation:
-
-TRAIN:  2015-01-01 to 2021-12-31    (7 years of historical data)
-        └─ Use to: Fit models, learn patterns
-        
-VAL:    2022-01-01 to 2022-12-31    (1 year for validation)
-        └─ Use to: Tune hyperparameters without leakage
-        
-TEST:   2023-01-01 to 2024-06-30    (recent unseen data)
-        └─ Use to: Final evaluation on truly unseen data
-```
-
-**Why chronological splits?**
-- ✅ Time-series data flows forward only
-- ✅ Prevents looking into the future
-- ✅ Matches real trading constraints
-- ✅ Realistic backtest results
-
----
-
-## 🔧 Customization
-
-### Change Date Splits
-```python
-# Edit data_config.py DateSplits class
-class DateSplits:
-    TRAIN_START = "2015-01-01"
-    TRAIN_END = "2021-12-31"
-    # ... modify as needed
-```
-
-### Add Validation Rules
-```python
-# Edit data_config.py DataValidationRules class
-class DataValidationRules:
-    MAX_NULL_PCT = 0.05          # Allow 5% nulls
-    MAX_DAILY_MOVE_PCT = 50      # Flag moves >50%
-    MIN_RECORDS_PER_SYMBOL = 252 # Need 1 trading year minimum
-    # ... customize thresholds
-```
-
-### Define Universe
-```python
-# Edit data_config.py Universe class
-class Universe:
-    INDIA_FOCUS = {
-        "market": "IN",
-        "min_market_cap_usd": 100_000_000,
-        "symbols": ["RELIANCE", "TCS", ...],
-        # ... customize list
-    }
-```
-
----
-
-## 📈 Impact & Results
-
-### Before KARZ
-```python
-df = pd.read_parquet("all_data.parquet")  # All 3-5 years
-model.fit(df)
-results = model.backtest(df)              # ❌ On same data!
-# Result: 15% annual return (overfitted)
-```
-
-### After KARZ
-```python
-train_df = filter_data_by_split(df, "date", split="train")
-test_df = filter_data_by_split(df, "date", split="test")
-
-model.fit(train_df)
-results = model.backtest(test_df)         # ✅ Unseen data only
-# Result: 9% annual return (realistic)
-# Difference = 6pp = overfitting impact
-```
-
----
-
-## 🎓 Learning Path
-
-**Beginner (30 min):**
-1. Read: `DATA_VALIDATION_QUICKSTART.md`
-2. Run: `python3 data_validator.py`
-3. Try: Add `data_config` import to one script
-
-**Intermediate (2 hours):**
-1. Read: `DATA_VALIDATION_GUIDE.md`
-2. Read: `BACKTEST_TEMPLATE_CHANGES.md`
-3. Apply: Template to 2 backtest scripts
-
-**Advanced (1 day):**
-1. Read: `IMPLEMENTATION_STATUS.md`
-2. Run: Full diagnostics on your project
-3. Extend: Customize rules for your use case
-
----
-
-## 🤝 Integration with Stock Screeners
-
-KARZ is designed to work with:
-- ✅ **Global Stock Screener** (herrrickshaw/global-stock-screener)
-- ✅ **Custom screening systems**
-- ✅ **Backtesting frameworks**
-- ✅ **Machine learning pipelines**
-- ✅ **Portfolio optimization**
-
-### Integration Checklist
-- [ ] Copy 3 core modules to your project
-- [ ] Import `data_config` in analysis scripts
-- [ ] Update backtest scripts with `filter_data_by_split()`
-- [ ] Run validators weekly for monitoring
-- [ ] Document data rules in `data_config.py`
-
----
-
-## 🔍 Troubleshooting
-
-**Q: ImportError when running validators?**  
-A: Install dependencies: `pip install pandas numpy scikit-learn`
-
-**Q: How do I know if my data is clean?**  
-A: Run `data_validator.py` → check quality scores (should be >80%)
-
-**Q: Can I use different date splits?**  
-A: Yes, edit `DateSplits` class in `data_config.py`
-
-**Q: Should I use --no-split on fixed backtest scripts?**  
-A: No, always use splits (--use-test-split is default)
-
-**Q: How often should I run validators?**  
-A: Weekly for freshness, monthly for full analysis
-
----
-
-## 📚 Documentation
-
-All documents are in this repository. Start with:
-
-1. **Quick overview:** `DATA_VALIDATION_QUICKSTART.md`
-2. **Full guide:** `DATA_VALIDATION_GUIDE.md`
-3. **Honest assessment:** `DATA_VALIDATION_HONEST_SUMMARY.md`
-4. **Implementation plan:** `DATA_VALIDATION_IMPLEMENTATION_ROADMAP.md`
-
----
-
-## 🎯 Success Metrics
-
-Framework is working well when:
-
-- ✅ All scripts import from `data_config`
-- ✅ All backtests use TEST split by default
-- ✅ Data validation runs weekly (catches 100% of issues)
-- ✅ Zero data leakage in production backtests
-- ✅ Team uses centralized split definitions
-- ✅ Backtest results are realistic (not overfitted)
-
----
-
-## 📝 License
-
-MIT License — Free to use and modify
-
----
-
-## 👤 Author
-
-Created: July 3, 2024  
-Framework: KARZ (Data Validation & Verification)  
-Status: ✅ Production Ready
-
----
-
-## 🚀 Getting Started
-
-```bash
-# 1. Clone this repository
 git clone https://github.com/herrrickshaw/karz.git
 cd karz
-
-# 2. Copy to your project
-cp *.py /path/to/your/project/
-
-# 3. Run validation
-python3 data_validator.py
-
-# 4. Read quickstart
-cat DATA_VALIDATION_QUICKSTART.md
-
-# 5. Start using in your scripts
-from data_config import DataConfig, filter_data_by_split
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt          # pandas, numpy (parquet I/O also needs pyarrow)
+python data_config.py                    # validates the configuration and prints it
+python data_validator.py                 # needs a data tree, see Configuration
 ```
 
----
+Using the helpers from your own project:
 
-**Questions?** Check the documentation in this repository or create an issue.
+```python
+from data_config import DataConfig, filter_data_by_split
 
----
+train_df = filter_data_by_split(df, "date", split="train")
+test_df = filter_data_by_split(df, "date", split="test")        # unseen data only
+errors = DataConfig().validation.validate_dataframe(test_df)    # list of problems, [] if clean
+```
 
-*KARZ Framework v1.0 — Data validation for fair backtesting*
+## How it works
+| Stage | Module | Output |
+|---|---|---|
+| Configure splits, rules, sources | `data_config.py` | `DataConfig`, `filter_data_by_split` |
+| Inventory + validate data files | `data_validator.py` (`DataValidator`) | `/tmp/data_validation_report.json` |
+| Pure checks (reusable) | `check_dataframe_quality`, `quality_score`, `scan_text_for_leakage` | lists of issue strings / dataclasses |
+| Analyse scripts for split/sample habits | `repo_data_analyzer.py` | `/tmp/repo_data_analysis.json` |
+| Backtest weight sets | `backtest_weight_optimization.py` | console report, optional CSV (`--export`) |
+| Quintile check of a fundamentals composite | `backtest_weight_validation.py` | console table |
+
+Design notes: splits are chronological (never random) so a backtest cannot look into the future; the checks are
+heuristics that flag items for human review (the leakage scan reports mostly false positives by design); the
+validator samples files and symbols in some places (see the `MAX_*` constants in `data_validator.py`).
+
+## Repository layout
+| Path | Purpose |
+|---|---|
+| `data_config.py` | Splits, rules, registry, `filter_data_by_split` |
+| `data_validator.py` | `DataValidator`, quality / leakage helpers, Kaggle placeholders, lineage tracker |
+| `repo_data_analyzer.py` | `RepositoryDataAnalyzer`, `DataSplitValidator` |
+| `backtest_weight_optimization.py` | `WeightBacktester`, `evaluate_signals`, `backtest_from_data_source` |
+| `backtest_weight_validation.py` | Composite-quintile validation (imports `correlation_analysis` from the parent screener project) |
+| `tests/` | pytest suite; `tests/golden/baseline.json` pins outputs captured before the 2026-11 refactor |
+| `*.md` guides | Longer write-ups: `DATA_VALIDATION_QUICKSTART.md`, `DATA_VALIDATION_GUIDE.md`, `DATA_VALIDATION_HONEST_SUMMARY.md`, `DATA_VALIDATION_IMPLEMENTATION_ROADMAP.md`, `FIXED_SCRIPTS_SUMMARY.md`, `IMPLEMENTATION_STATUS.md`, `BACKTEST_TEMPLATE_CHANGES.md`, `TEMPLATE_FIX_SUMMARY.md`, `HOW_TO_USE_WITH_AI.md` |
+| `notebooks/colab_test.ipynb` | Colab smoke notebook |
+
+## Data sources
+No data is shipped. `DataSourceRegistry` in `data_config.py` expects `cache_seed/cleaned_long*.parquet` and
+`cache_seed/fundamentals/` from the sibling screener project (`herrrickshaw/global-stock-screener`).
+`data_validator.py` lists four Kaggle stock datasets as placeholders ("Not yet downloaded"); it does not call
+the Kaggle API. Respect each dataset's own licence.
+
+## Configuration
+- Date splits, thresholds and universes: edit the class attributes in `data_config.py`.
+- Data root: `DataValidator(base_path=...)` and `RepositoryDataAnalyzer(base_path=...)` default to the owner's local
+  path `DEFAULT_BASE_PATH` (`/Users/umashankar/Downloads/code/python_files`); pass your own directory.
+- Backtest CLIs: `--market`, `--data`, `--weight-set`, `--export`, `--no-split` (the TEST split is the default).
+- No secrets or environment variables are needed.
+
+## Testing
+```bash
+pip install pytest ruff pyarrow
+pytest -q        # offline; uses synthetic frames and temp dirs
+ruff check .
+```
+
+## Limitations and known issues
+- 🔴 The cross-source close-price comparison in `DataValidator._compare_symbol_closes` raises internally
+  (`pd.to_datetime` on a `set`) and the error is swallowed, so it reports 0 discrepancies even when sources differ.
+  The "0 cross-source discrepancies" figure in older docs is therefore not evidence of agreement.
+- 🔴 `evaluate_signals` computes true negatives with `~` on 0/1 integers, which yields negative counts, so the
+  reported `tn` and `accuracy` are wrong (precision, recall, F1 and returns are unaffected). Pinned by an `xfail` test.
+- `DataValidationRules.validate_dataframe` adds a `returns` column to the frame you pass in, and its extreme-move
+  threshold compares a fractional return with `50` (percent), so it almost never fires.
+- `filter_data_by_split` converts the date column to datetime in place.
+- `backtest_weight_validation.py` cannot run standalone: `correlation_analysis` lives in the parent project.
+- Pandas gotchas: `if df:` raises, and `x or default` keeps `NaN` (truthy). Use `df is None or df.empty` and `pd.notna(x)`.
+- Treat leakage flags as a checklist, not an autopilot; the scan found 6 flags on the author's tree, mostly false positives.
+- Reports are written under `/tmp`; the validator and analyzer sample files (first 30-100 scripts, first 20 symbols).
+
+## Related repositories
+- [`herrrickshaw/global-stock-screener`](https://github.com/herrrickshaw/global-stock-screener): the screener whose data these checks target.
+
+## Licence
+The previous README states "MIT License", but the repository contains no LICENSE file yet — treat as all rights
+reserved until one is added.
