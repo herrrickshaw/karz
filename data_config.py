@@ -13,18 +13,27 @@ Single source of truth for:
 All analysis scripts should import from this module and use these definitions.
 
 Usage:
-    from data_config import DataConfig, get_date_split, validate_universe
+    from data_config import DataConfig, filter_data_by_split
 
     config = DataConfig()
-    train_df = load_data("2020-01-01", config.VAL_START)
-    val_df = load_data(config.VAL_START, config.TEST_START)
-    test_df = load_data(config.TEST_START, "2024-12-31")
+    train_start, train_end = config.date_splits.get_train_range()
+    test_df = filter_data_by_split(df, "date", split="test")
 """
 
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional
+from __future__ import annotations
+
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Dict, List, Tuple
+
 import pandas as pd
+
+# Share of rows that may be "extreme moves" before validate_dataframe reports them.
+EXTREME_MOVE_ROW_SHARE = 0.01
+# Tolerance (absolute) when comparing two values where one of them is zero.
+ZERO_VALUE_TOLERANCE = 0.01
+# Symbol coverage required by validate_universe_consistency.
+MIN_SYMBOL_COVERAGE = 0.8
 
 
 # ============================================================================
@@ -141,8 +150,8 @@ class DataSourceRegistry:
     }
 
     @classmethod
-    def get_source(cls, market: str) -> Dict:
-        """Get source config for a market."""
+    def get_source(cls, market: str) -> Dict | None:
+        """Get source config for a market (None for an unknown market code)."""
         if market == "IN":
             return cls.INDIA_PRIMARY
         return cls.GLOBAL_SOURCES.get(market)
@@ -185,8 +194,12 @@ class DataValidationRules:
 
     @staticmethod
     def validate_dataframe(df: pd.DataFrame, raise_on_error: bool = False) -> List[str]:
-        """Run all validation rules on a DataFrame."""
-        errors = []
+        """Run all validation rules on an OHLCV DataFrame and return the error messages.
+
+        Note: as a side effect a ``returns`` column (close pct-change) is added to ``df``
+        when it has a ``close`` column; callers that must not be mutated should pass a copy.
+        """
+        errors: List[str] = []
 
         # Check critical columns exist
         for col in DataValidationRules.CRITICAL_COLUMNS:
@@ -214,7 +227,7 @@ class DataValidationRules:
         if 'close' in df.columns:
             df['returns'] = df['close'].pct_change()
             extreme = (df['returns'].abs() > DataValidationRules.MAX_DAILY_MOVE_PCT).sum()
-            if extreme > len(df) * 0.01:  # More than 1% extreme moves
+            if extreme > len(df) * EXTREME_MOVE_ROW_SHARE:
                 msg = f"{extreme} extreme daily moves (>{DataValidationRules.MAX_DAILY_MOVE_PCT}%)"
                 errors.append(msg)
 
@@ -303,37 +316,36 @@ class FreshnessRequirements:
         "note": "Can be months stale; not for live trading",
     }
 
+    # (requirement key, seconds per unit, label, number format) in precedence order.
+    _TIMED_LIMITS = (
+        ("max_age_minutes", 60.0, "min", ".0f"),
+        ("max_age_hours", 3600.0, "hours", ".1f"),
+    )
+
     @staticmethod
     def check_freshness(
         source_last_updated: datetime,
         requirement: Dict
     ) -> Tuple[bool, str]:
-        """Check if data meets freshness requirement."""
-        now = datetime.now()
+        """Return (is_fresh, message) for a source last updated at ``source_last_updated``.
 
-        if "max_age_minutes" in requirement:
-            age = (now - source_last_updated).total_seconds() / 60
-            max_age = requirement["max_age_minutes"]
-            fresh = age <= max_age
-            msg = f"Age: {age:.0f} min (max: {max_age} min)"
+        ``requirement`` is one of the preset dicts above (keys ``max_age_minutes``,
+        ``max_age_hours`` or ``max_age_days``); anything else is treated as fresh.
+        """
+        age_delta = datetime.now() - source_last_updated
 
-        elif "max_age_hours" in requirement:
-            age = (now - source_last_updated).total_seconds() / 3600
-            max_age = requirement["max_age_hours"]
-            fresh = age <= max_age
-            msg = f"Age: {age:.1f} hours (max: {max_age} hours)"
+        for key, seconds_per_unit, label, fmt in FreshnessRequirements._TIMED_LIMITS:
+            if key in requirement:
+                age = age_delta.total_seconds() / seconds_per_unit
+                max_age = requirement[key]
+                return age <= max_age, f"Age: {age:{fmt}} {label} (max: {max_age} {label})"
 
-        elif "max_age_days" in requirement:
-            age = (now - source_last_updated).days
+        if "max_age_days" in requirement:
+            age = age_delta.days
             max_age = requirement["max_age_days"]
-            fresh = age <= max_age
-            msg = f"Age: {age} days (max: {max_age} days)"
+            return age <= max_age, f"Age: {age} days (max: {max_age} days)"
 
-        else:
-            fresh = True
-            msg = "Unknown freshness requirement"
-
-        return fresh, msg
+        return True, "Unknown freshness requirement"
 
 
 # ============================================================================
@@ -368,7 +380,7 @@ class ConsistencyRules:
     ) -> bool:
         """Check if difference is acceptable."""
         if value1 == 0 or value2 == 0:
-            return abs(value1 - value2) < 0.01
+            return abs(value1 - value2) < ZERO_VALUE_TOLERANCE
 
         pct_diff = abs(value1 - value2) / max(abs(value1), abs(value2))
         return pct_diff <= (tolerance_pct / 100)
@@ -390,15 +402,13 @@ class DataConfig:
         self.consistency = ConsistencyRules()
 
     def get_split_for_purpose(self, purpose: str) -> Tuple[str, str]:
-        """Get appropriate date split for analysis purpose."""
-        if purpose == "backtest":
-            return self.date_splits.get_test_range()
-        elif purpose == "validation":
-            return self.date_splits.get_validation_range()
-        elif purpose == "training":
-            return self.date_splits.get_train_range()
-        else:
-            return self.date_splits.get_test_range()  # Default to test
+        """Get appropriate date split for analysis purpose (unknown purposes use the test split)."""
+        ranges = {
+            "backtest": self.date_splits.get_test_range,
+            "validation": self.date_splits.get_validation_range,
+            "training": self.date_splits.get_train_range,
+        }
+        return ranges.get(purpose, self.date_splits.get_test_range)()
 
 
 # ============================================================================
@@ -410,43 +420,38 @@ def filter_data_by_split(
     date_col: str,
     split: str = "test"
 ) -> pd.DataFrame:
-    """Filter DataFrame to specific date split."""
-    config = DataConfig()
-    date_splits = config.date_splits
+    """Return the rows of ``df`` whose ``date_col`` falls in the train/validation/test range.
 
-    if split == "train":
-        start, end = date_splits.get_train_range()
-    elif split == "validation":
-        start, end = date_splits.get_validation_range()
-    elif split == "test":
-        start, end = date_splits.get_test_range()
-    else:
+    Note: ``df[date_col]`` is converted to datetime in place (the caller's frame is mutated).
+    """
+    ranges = {
+        "train": DateSplits.get_train_range,
+        "validation": DateSplits.get_validation_range,
+        "test": DateSplits.get_test_range,
+    }
+    if split not in ranges:
         raise ValueError(f"Unknown split: {split}")
+    start, end = ranges[split]()
 
     df[date_col] = pd.to_datetime(df[date_col])
-    filtered = df[(df[date_col] >= start) & (df[date_col] <= end)]
-
-    return filtered
+    return df[(df[date_col] >= start) & (df[date_col] <= end)]
 
 
 def validate_universe_consistency(
     universe_dict: Dict,
     df: pd.DataFrame
 ) -> List[str]:
-    """Check if DataFrame matches universe definition."""
-    issues = []
+    """Check that ``df['symbol']`` covers the universe's symbol list; returns issue messages."""
+    issues: List[str] = []
 
     # Check symbol count
     if "symbols" in universe_dict and isinstance(universe_dict["symbols"], list):
         available = set(universe_dict["symbols"]) & set(df['symbol'].unique())
-        if len(available) < len(universe_dict["symbols"]) * 0.8:
+        if len(available) < len(universe_dict["symbols"]) * MIN_SYMBOL_COVERAGE:
             issues.append(f"Only {len(available)}/{len(universe_dict['symbols'])} "
                          f"defined symbols found in data")
 
-    # Check market cap filter
-    if "min_market_cap_usd" in universe_dict:
-        # This would require fundamental data
-        pass
+    # Market-cap filtering would need fundamentals data and is not checked here.
 
     return issues
 
