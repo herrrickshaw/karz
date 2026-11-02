@@ -19,11 +19,15 @@ Usage:
     python3 backtest_weight_optimization.py --market IN --use-test-split
 """
 
-import pandas as pd
-import numpy as np
-from typing import Dict, Tuple, List, Optional
+from __future__ import annotations
+
+import argparse
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Dict
+
+import numpy as np
+import pandas as pd
 
 # Import data configuration for proper train/test splits
 try:
@@ -33,7 +37,82 @@ except ImportError:
     HAS_DATA_CONFIG = False
     print("⚠️  data_config.py not found. Run without train/test split. Recommend installing.")
 
-import argparse
+# Buy when a composite score is above this percentile of the cross-section (50 = top half).
+BUY_PERCENTILE = 50.0
+
+# (heading printed by run_backtest, weights attribute name, metrics label) per weight set.
+_WEIGHT_SETS = {
+    'baseline': ("📊 BASELINE WEIGHTS (Original 8-D Model)", 'BASELINE_WEIGHTS', "Baseline"),
+    'optimized': ("🚀 OPTIMIZED WEIGHTS (F1-Tuned Model)", 'OPTIMIZED_WEIGHTS', "Optimized"),
+}
+
+
+def evaluate_signals(signals: np.ndarray, actual_returns, label: str) -> Dict:
+    """Score binary buy signals against realised returns.
+
+    ``signals`` is a 0/1 integer array, ``actual_returns`` the matching returns in percent.
+    "Outperform" means a return above the median; returns precision/recall/F1/accuracy,
+    the confusion counts and average buy/sell returns.
+    """
+    median_return = np.median(actual_returns)
+    actual_outperform = (actual_returns > median_return).astype(int)
+
+    n_signals = np.sum(signals)
+    n_outperform = np.sum(actual_outperform)
+
+    # NB: ``~`` on 0/1 ints yields -1/-2; ``&`` with a 0/1 signal still gives the intended
+    # counts because only the lowest bit matters. Kept as-is to preserve results exactly.
+    tp = np.sum(signals & actual_outperform)
+    fp = np.sum(signals & ~actual_outperform)
+    fn = np.sum(~signals & actual_outperform)
+    tn = np.sum(~signals & ~actual_outperform)
+
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    accuracy = (tp + tn) / len(signals)
+
+    buy_returns = actual_returns[signals == 1]
+    sell_returns = actual_returns[signals == 0]
+    avg_buy_return = np.mean(buy_returns) if len(buy_returns) > 0 else 0
+    avg_sell_return = np.mean(sell_returns) if len(sell_returns) > 0 else 0
+
+    return {
+        'label': label,
+        'n_signals': n_signals,
+        'n_outperform': n_outperform,
+        'tp': tp,
+        'fp': fp,
+        'fn': fn,
+        'tn': tn,
+        'precision': precision,
+        'recall': recall,
+        'f1': f1,
+        'accuracy': accuracy,
+        'avg_buy_return': avg_buy_return,
+        'avg_sell_return': avg_sell_return,
+        'return_spread': avg_buy_return - avg_sell_return,
+    }
+
+
+def print_weight_block(heading: str, m: Dict, n_companies: int) -> None:
+    """Print the confusion-matrix / quality / return block for one weight set."""
+    print(f"\n{heading}")
+    print(f"   Buy signals: {m['n_signals']:,} out of {n_companies:,} companies")
+    print(f"   Actual outperformers: {m['n_outperform']:,}")
+    print(f"   ✅ True Positives:  {m['tp']:,} (correct buys)")
+    print(f"   ❌ False Positives: {m['fp']:,} (wrong buys)")
+    print(f"   ❌ False Negatives: {m['fn']:,} (missed wins)")
+    print(f"   ✅ True Negatives:  {m['tn']:,} (correct sells)")
+    print("\n   📊 QUALITY METRICS")
+    print(f"   Precision:  {m['precision']:.1%} (% of buys that outperform)")
+    print(f"   Recall:     {m['recall']:.1%} (% of winners we catch)")
+    print(f"   F1 Score:   {m['f1']:.4f}")
+    print(f"   Accuracy:   {m['accuracy']:.1%}")
+    print("\n   💰 RETURN METRICS")
+    print(f"   Avg buy return:  {m['avg_buy_return']:+.2f}%")
+    print(f"   Avg sell return: {m['avg_sell_return']:+.2f}%")
+    print(f"   Return spread:   {m['return_spread']:+.2f}pp")
 
 
 class WeightBacktester:
@@ -82,11 +161,11 @@ class WeightBacktester:
             config = DataConfig()
             errors = config.validation.validate_dataframe(self.data)
             if errors:
-                print(f"⚠️  Data validation warnings:")
+                print("⚠️  Data validation warnings:")
                 for error in errors:
                     print(f"     • {error}")
 
-        print(f"\n📊 BACKTEST INITIALIZATION")
+        print("\n📊 BACKTEST INITIALIZATION")
         print(f"   Companies: {len(self.data):,}")
         print(f"   Lookback period: {lookback_years} years")
         print(f"   Using proper train/test split: {use_test_split}")
@@ -95,7 +174,8 @@ class WeightBacktester:
             test_start, test_end = config.date_splits.get_test_range()
             print(f"   ✓ Data split: TEST [{test_start} to {test_end}] (unseen data)")
         else:
-            print(f"   Date range: {datetime.now().date() - timedelta(days=365*lookback_years)} to {datetime.now().date()}")
+            today = datetime.now().date()
+            print(f"   Date range: {today - timedelta(days=365*lookback_years)} to {today}")
 
     def calculate_composite_score(self, df: pd.DataFrame, weights: Dict[str, float]) -> np.ndarray:
         """Calculate composite score using weight dictionary"""
@@ -138,151 +218,50 @@ class WeightBacktester:
             Results dictionary with metrics for each weight set
         """
 
-        print(f"\n" + "="*80)
+        print("\n" + "="*80)
         print(f"RUNNING BACKTEST - {weight_set.upper()}")
-        print(f"="*80)
+        print("="*80)
 
         results = {}
 
-        # Test baseline weights
-        if weight_set in ['baseline', 'both']:
-            print(f"\n📊 BASELINE WEIGHTS (Original 8-D Model)")
-            baseline_scores = self.calculate_composite_score(self.data, self.BASELINE_WEIGHTS)
-            baseline_signals = self.generate_signals(baseline_scores, percentile_threshold=50)
-
-            baseline_metrics = self._evaluate_signals(
-                baseline_signals,
-                self.data['stock_return_12m'],
-                label="Baseline"
-            )
-            results['baseline'] = baseline_metrics
-
-        # Test optimized weights
-        if weight_set in ['optimized', 'both']:
-            print(f"\n🚀 OPTIMIZED WEIGHTS (F1-Tuned Model)")
-            optimized_scores = self.calculate_composite_score(self.data, self.OPTIMIZED_WEIGHTS)
-            optimized_signals = self.generate_signals(optimized_scores, percentile_threshold=50)
-
-            optimized_metrics = self._evaluate_signals(
-                optimized_signals,
-                self.data['stock_return_12m'],
-                label="Optimized"
-            )
-            results['optimized'] = optimized_metrics
+        for key, (heading, weights_attr, label) in _WEIGHT_SETS.items():
+            if weight_set not in (key, 'both'):
+                continue
+            print(f"\n{heading}")
+            scores = self.calculate_composite_score(self.data, getattr(self, weights_attr))
+            signals = self.generate_signals(scores, percentile_threshold=BUY_PERCENTILE)
+            results[key] = self._evaluate_signals(signals, self.data['stock_return_12m'], label=label)
 
         return results
 
     def _evaluate_signals(self, signals: np.ndarray, actual_returns: np.ndarray, label: str) -> Dict:
-        """Evaluate signal quality using precision, recall, F1"""
-
-        # Define "outperform" as return > median
-        median_return = np.median(actual_returns)
-        actual_outperform = (actual_returns > median_return).astype(int)
-
-        # Calculate metrics
-        n_signals = np.sum(signals)
-        n_outperform = np.sum(actual_outperform)
-
-        # True positives: we said BUY and company outperformed
-        tp = np.sum(signals & actual_outperform)
-
-        # False positives: we said BUY but company underperformed
-        fp = np.sum(signals & ~actual_outperform)
-
-        # False negatives: we said SELL but company outperformed
-        fn = np.sum(~signals & actual_outperform)
-
-        # True negatives: we said SELL and company underperformed
-        tn = np.sum(~signals & ~actual_outperform)
-
-        # Calculate metrics
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-        accuracy = (tp + tn) / len(signals)
-
-        # Return statistics
-        buy_returns = actual_returns[signals == 1]
-        sell_returns = actual_returns[signals == 0]
-
-        avg_buy_return = np.mean(buy_returns) if len(buy_returns) > 0 else 0
-        avg_sell_return = np.mean(sell_returns) if len(sell_returns) > 0 else 0
-
-        metrics = {
-            'label': label,
-            'n_signals': n_signals,
-            'n_outperform': n_outperform,
-            'tp': tp,
-            'fp': fp,
-            'fn': fn,
-            'tn': tn,
-            'precision': precision,
-            'recall': recall,
-            'f1': f1,
-            'accuracy': accuracy,
-            'avg_buy_return': avg_buy_return,
-            'avg_sell_return': avg_sell_return,
-            'return_spread': avg_buy_return - avg_sell_return,
-        }
-
-        return metrics
+        """Evaluate signal quality using precision, recall, F1 (see :func:`evaluate_signals`)."""
+        return evaluate_signals(signals, actual_returns, label)
 
     def generate_report(self, results: Dict) -> None:
         """Generate comprehensive backtest report"""
 
-        print(f"\n" + "="*80)
-        print(f"BACKTEST RESULTS & COMPARISON")
-        print(f"="*80)
+        print("\n" + "="*80)
+        print("BACKTEST RESULTS & COMPARISON")
+        print("="*80)
 
         if 'baseline' in results:
-            baseline = results['baseline']
-            print(f"\n🔍 BASELINE WEIGHTS (Original Model)")
-            print(f"   Buy signals: {baseline['n_signals']:,} out of {len(self.data):,} companies")
-            print(f"   Actual outperformers: {baseline['n_outperform']:,}")
-            print(f"   ✅ True Positives:  {baseline['tp']:,} (correct buys)")
-            print(f"   ❌ False Positives: {baseline['fp']:,} (wrong buys)")
-            print(f"   ❌ False Negatives: {baseline['fn']:,} (missed wins)")
-            print(f"   ✅ True Negatives:  {baseline['tn']:,} (correct sells)")
-            print(f"\n   📊 QUALITY METRICS")
-            print(f"   Precision:  {baseline['precision']:.1%} (% of buys that outperform)")
-            print(f"   Recall:     {baseline['recall']:.1%} (% of winners we catch)")
-            print(f"   F1 Score:   {baseline['f1']:.4f}")
-            print(f"   Accuracy:   {baseline['accuracy']:.1%}")
-            print(f"\n   💰 RETURN METRICS")
-            print(f"   Avg buy return:  {baseline['avg_buy_return']:+.2f}%")
-            print(f"   Avg sell return: {baseline['avg_sell_return']:+.2f}%")
-            print(f"   Return spread:   {baseline['return_spread']:+.2f}pp")
+            print_weight_block("🔍 BASELINE WEIGHTS (Original Model)", results['baseline'], len(self.data))
 
         if 'optimized' in results:
-            optimized = results['optimized']
-            print(f"\n🚀 OPTIMIZED WEIGHTS (F1-Tuned Model)")
-            print(f"   Buy signals: {optimized['n_signals']:,} out of {len(self.data):,} companies")
-            print(f"   Actual outperformers: {optimized['n_outperform']:,}")
-            print(f"   ✅ True Positives:  {optimized['tp']:,} (correct buys)")
-            print(f"   ❌ False Positives: {optimized['fp']:,} (wrong buys)")
-            print(f"   ❌ False Negatives: {optimized['fn']:,} (missed wins)")
-            print(f"   ✅ True Negatives:  {optimized['tn']:,} (correct sells)")
-            print(f"\n   📊 QUALITY METRICS")
-            print(f"   Precision:  {optimized['precision']:.1%} (% of buys that outperform)")
-            print(f"   Recall:     {optimized['recall']:.1%} (% of winners we catch)")
-            print(f"   F1 Score:   {optimized['f1']:.4f}")
-            print(f"   Accuracy:   {optimized['accuracy']:.1%}")
-            print(f"\n   💰 RETURN METRICS")
-            print(f"   Avg buy return:  {optimized['avg_buy_return']:+.2f}%")
-            print(f"   Avg sell return: {optimized['avg_sell_return']:+.2f}%")
-            print(f"   Return spread:   {optimized['return_spread']:+.2f}pp")
+            print_weight_block("🚀 OPTIMIZED WEIGHTS (F1-Tuned Model)", results['optimized'], len(self.data))
 
         # Comparison
         if 'baseline' in results and 'optimized' in results:
             baseline = results['baseline']
             optimized = results['optimized']
 
-            print(f"\n" + "="*80)
-            print(f"📈 IMPROVEMENTS (OPTIMIZED vs BASELINE)")
-            print(f"="*80)
+            print("\n" + "="*80)
+            print("📈 IMPROVEMENTS (OPTIMIZED vs BASELINE)")
+            print("="*80)
 
-            print(f"\n   Metric                  Baseline      Optimized     Improvement")
-            print(f"   " + "-"*70)
+            print("\n   Metric                  Baseline      Optimized     Improvement")
+            print("   " + "-"*70)
 
             metrics_to_compare = [
                 ('Precision', 'precision', 'pct'),
@@ -320,21 +299,21 @@ class WeightBacktester:
                 improvements[metric_key] = improvement
 
             # Summary
-            print(f"\n💡 SUMMARY")
+            print("\n💡 SUMMARY")
             improvements_count = sum(1 for v in improvements.values() if v > 0)
             print(f"   Improved metrics: {improvements_count}/{len(improvements)}")
 
             if improvements['f1'] > 0.05:
                 print(f"   ✅ SIGNIFICANT IMPROVEMENT: F1 score increased by {improvements['f1']:.4f}")
-                print(f"   Recommendation: DEPLOY OPTIMIZED WEIGHTS")
+                print("   Recommendation: DEPLOY OPTIMIZED WEIGHTS")
             elif improvements['f1'] > 0:
                 print(f"   ✅ MODEST IMPROVEMENT: F1 score increased by {improvements['f1']:.4f}")
-                print(f"   Recommendation: DEPLOY with caution, monitor closely")
+                print("   Recommendation: DEPLOY with caution, monitor closely")
             else:
                 print(f"   ❌ NO IMPROVEMENT: F1 score decreased by {abs(improvements['f1']):.4f}")
-                print(f"   Recommendation: KEEP BASELINE WEIGHTS")
+                print("   Recommendation: KEEP BASELINE WEIGHTS")
 
-        print(f"\n" + "="*80)
+        print("\n" + "="*80)
 
     def export_results(self, results: Dict, filepath: str) -> None:
         """Export backtest results to CSV"""
@@ -389,7 +368,7 @@ def backtest_from_data_source(
         return {}
 
     print(f"\n{'='*80}")
-    print(f"LOADING DATA FOR BACKTEST (PROPER SPLIT)")
+    print("LOADING DATA FOR BACKTEST (PROPER SPLIT)")
     print(f"{'='*80}")
 
     # Load full data
@@ -415,12 +394,12 @@ def backtest_from_data_source(
             backtest_data = full_data
     else:
         backtest_data = full_data
-        print(f"⚠️  Using all data (no split; not recommended for evaluation)")
+        print("⚠️  Using all data (no split; not recommended for evaluation)")
 
     # Validate backtest data
     errors = config.validation.validate_dataframe(backtest_data)
     if errors:
-        print(f"⚠️  Data validation warnings:")
+        print("⚠️  Data validation warnings:")
         for error in errors:
             print(f"     • {error}")
 
@@ -451,9 +430,9 @@ if __name__ == "__main__":
     print("\n" + "🎯 "*40)
     print("BACKTEST FRAMEWORK - KARZ vs MAIN WEIGHT COMPARISON")
     print("🎯 "*40)
-    print(f"\n✓ Using proper train/test splits from data_config.py")
-    print(f"✓ This prevents data leakage and ensures fair evaluation")
-    print(f"✓ Backtest on TEST split: unseen recent data (2023-2024)")
+    print("\n✓ Using proper train/test splits from data_config.py")
+    print("✓ This prevents data leakage and ensures fair evaluation")
+    print("✓ Backtest on TEST split: unseen recent data (2023-2024)")
 
     # Run backtest
     use_split = not args.no_split
