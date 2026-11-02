@@ -428,8 +428,6 @@ class RepositoryDataAnalyzer:
         """Extract string literal from AST node."""
         if isinstance(arg_node, ast.Constant) and isinstance(arg_node.value, str):
             return arg_node.value
-        elif isinstance(arg_node, ast.Str):  # Python 3.7 compat
-            return arg_node.s
         return None
 
 
