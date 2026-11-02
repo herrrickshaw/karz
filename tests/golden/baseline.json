@@ -1,0 +1,949 @@
+{
+ "backtest_weight_optimization": {
+  "csv": "weight_set,true_positives,false_positives,false_negatives,true_negatives,precision,recall,f1_score,accuracy,avg_buy_return,avg_sell_return,return_spread\nbaseline,15,15,15,-105,0.5,0.5,0.5,-1.5,3.8608497763950385,6.480668268455393,-2.619818492060354\noptimized,16,14,14,-104,0.5333333333333333,0.5333333333333333,0.5333333333333333,-1.4666666666666666,3.924208886192153,6.41730915865828,-2.4931002724661266\n",
+  "driver_all": {
+   "stdout": "\n================================================================================\nLOADING DATA FOR BACKTEST (PROPER SPLIT)\n================================================================================\n\u2713 Loaded 80 records from d.parquet\n\u26a0\ufe0f  Using all data (no split; not recommended for evaluation)\n\n\ud83d\udcca BACKTEST INITIALIZATION\n   Companies: 80\n   Lookback period: 3 years\n   Using proper train/test split: False\n\n================================================================================\nRUNNING BACKTEST - BASELINE\n================================================================================\n\n\ud83d\udcca BASELINE WEIGHTS (Original 8-D Model)\n\n================================================================================\nBACKTEST RESULTS & COMPARISON\n================================================================================\n\n\ud83d\udd0d BASELINE WEIGHTS (Original Model)\n   Buy signals: 40 out of 80 companies\n   Actual outperformers: 40\n   \u2705 True Positives:  16 (correct buys)\n   \u274c False Positives: 24 (wrong buys)\n   \u274c False Negatives: 24 (missed wins)\n   \u2705 True Negatives:  -144 (correct sells)\n\n   \ud83d\udcca QUALITY METRICS\n   Precision:  40.0% (% of buys that outperform)\n   Recall:     40.0% (% of winners we catch)\n   F1 Score:   0.4000\n   Accuracy:   -160.0%\n\n   \ud83d\udcb0 RETURN METRICS\n   Avg buy return:  +3.72%\n   Avg sell return: +12.06%\n   Return spread:   -8.34pp\n\n================================================================================",
+   "value": {
+    "baseline": {
+     "accuracy": -1.6,
+     "avg_buy_return": 3.7220479919,
+     "avg_sell_return": 12.0571742633,
+     "f1": 0.4,
+     "fn": 24,
+     "fp": 24,
+     "label": "Baseline",
+     "n_outperform": 40,
+     "n_signals": 40,
+     "precision": 0.4,
+     "recall": 0.4,
+     "return_spread": -8.3351262714,
+     "tn": -144,
+     "tp": 16
+    }
+   }
+  },
+  "driver_missing": {
+   "stdout": "\n================================================================================\nLOADING DATA FOR BACKTEST (PROPER SPLIT)\n================================================================================\n\u274c Data file not found: <ROOT>/nope.parquet",
+   "value": {}
+  },
+  "driver_split": {
+   "stdout": "\n================================================================================\nLOADING DATA FOR BACKTEST (PROPER SPLIT)\n================================================================================\n\u2713 Loaded 80 records from d.parquet\n\u2713 Using TEST split: 2023-01-01 to 2024-06-30 (55 records)\n\n\ud83d\udcca BACKTEST INITIALIZATION\n   Companies: 55\n   Lookback period: 3 years\n   Using proper train/test split: True\n   \u2713 Data split: TEST [2023-01-01 to 2024-06-30] (unseen data)\n\n================================================================================\nRUNNING BACKTEST - BOTH\n================================================================================\n\n\ud83d\udcca BASELINE WEIGHTS (Original 8-D Model)\n\n\ud83d\ude80 OPTIMIZED WEIGHTS (F1-Tuned Model)\n\n================================================================================\nBACKTEST RESULTS & COMPARISON\n================================================================================\n\n\ud83d\udd0d BASELINE WEIGHTS (Original Model)\n   Buy signals: 27 out of 55 companies\n   Actual outperformers: 27\n   \u2705 True Positives:  11 (correct buys)\n   \u274c False Positives: 16 (wrong buys)\n   \u274c False Negatives: 16 (missed wins)\n   \u2705 True Negatives:  -98 (correct sells)\n\n   \ud83d\udcca QUALITY METRICS\n   Precision:  40.7% (% of buys that outperform)\n   Recall:     40.7% (% of winners we catch)\n   F1 Score:   0.4074\n   Accuracy:   -158.2%\n\n   \ud83d\udcb0 RETURN METRICS\n   Avg buy return:  +5.13%\n   Avg sell return: +13.20%\n   Return spread:   -8.07pp\n\n\ud83d\ude80 OPTIMIZED WEIGHTS (F1-Tuned Model)\n   Buy signals: 27 out of 55 companies\n   Actual outperformers: 27\n   \u2705 True Positives:  10 (correct buys)\n   \u274c False Positives: 17 (wrong buys)\n   \u274c False Negatives: 17 (missed wins)\n   \u2705 True Negatives:  -99 (correct sells)\n\n   \ud83d\udcca QUALITY METRICS\n   Precision:  37.0% (% of buys that outperform)\n   Recall:     37.0% (% of winners we catch)\n   F1 Score:   0.3704\n   Accuracy:   -161.8%\n\n   \ud83d\udcb0 RETURN METRICS\n   Avg buy return:  +4.18%\n   Avg sell return: +14.11%\n   Return spread:   -9.92pp\n\n================================================================================\n\ud83d\udcc8 IMPROVEMENTS (OPTIMIZED vs BASELINE)\n================================================================================\n\n   Metric                  Baseline      Optimized     Improvement\n   ----------------------------------------------------------------------\n   Precision                    40.7%         37.0%  \u274c       -3.7pp\n   Recall                       40.7%         37.0%  \u274c       -3.7pp\n   F1 Score                    0.4074        0.3704  \u274c      -0.0370\n   Accuracy                   -158.2%       -161.8%  \u274c       -3.6pp\n   Avg Buy Return              +5.13%        +4.18%  \u274c      -0.94pp\n   Return Spread               -8.07%        -9.92%  \u274c      -1.86pp\n\n\ud83d\udca1 SUMMARY\n   Improved metrics: 0/6\n   \u274c NO IMPROVEMENT: F1 score decreased by 0.0370\n   Recommendation: KEEP BASELINE WEIGHTS\n\n================================================================================",
+   "value": {
+    "baseline": {
+     "accuracy": -1.5818181818,
+     "avg_buy_return": 5.1282827764,
+     "avg_sell_return": 13.1956547235,
+     "f1": 0.4074074074,
+     "fn": 16,
+     "fp": 16,
+     "label": "Baseline",
+     "n_outperform": 27,
+     "n_signals": 27,
+     "precision": 0.4074074074,
+     "recall": 0.4074074074,
+     "return_spread": -8.067371947,
+     "tn": -98,
+     "tp": 11
+    },
+    "optimized": {
+     "accuracy": -1.6181818182,
+     "avg_buy_return": 4.1837274449,
+     "avg_sell_return": 14.106475936,
+     "f1": 0.3703703704,
+     "fn": 17,
+     "fp": 17,
+     "label": "Optimized",
+     "n_outperform": 27,
+     "n_signals": 27,
+     "precision": 0.3703703704,
+     "recall": 0.3703703704,
+     "return_spread": -9.9227484911,
+     "tn": -99,
+     "tp": 10
+    }
+   }
+  },
+  "export": {
+   "stdout": "\n\u2705 Backtest results exported to <ROOT>/res.csv",
+   "value": null
+  },
+  "init": {
+   "stdout": "\u26a0\ufe0f  Data validation warnings:\n     \u2022 Missing critical column: open\n     \u2022 Missing critical column: high\n     \u2022 Missing critical column: low\n     \u2022 Missing critical column: close\n     \u2022 Missing critical column: volume\n     \u2022 Missing critical column: date\n\n\ud83d\udcca BACKTEST INITIALIZATION\n   Companies: 60\n   Lookback period: 3 years\n   Using proper train/test split: True\n   \u2713 Data split: TEST [2023-01-01 to 2024-06-30] (unseen data)",
+   "value": null
+  },
+  "keys_baseline": [
+   "baseline"
+  ],
+  "keys_optimized": [
+   "optimized"
+  ],
+  "metrics": {
+   "baseline": {
+    "accuracy": -1.5,
+    "avg_buy_return": 3.8608497764,
+    "avg_sell_return": 6.4806682685,
+    "f1": 0.5,
+    "fn": 15,
+    "fp": 15,
+    "label": "Baseline",
+    "n_outperform": 30,
+    "n_signals": 30,
+    "precision": 0.5,
+    "recall": 0.5,
+    "return_spread": -2.6198184921,
+    "tn": -105,
+    "tp": 15
+   },
+   "optimized": {
+    "accuracy": -1.4666666667,
+    "avg_buy_return": 3.9242088862,
+    "avg_sell_return": 6.4173091587,
+    "f1": 0.5333333333,
+    "fn": 14,
+    "fp": 14,
+    "label": "Optimized",
+    "n_outperform": 30,
+    "n_signals": 30,
+    "precision": 0.5333333333,
+    "recall": 0.5333333333,
+    "return_spread": -2.4931002725,
+    "tn": -104,
+    "tp": 16
+   }
+  },
+  "report": {
+   "stdout": "\n================================================================================\nBACKTEST RESULTS & COMPARISON\n================================================================================\n\n\ud83d\udd0d BASELINE WEIGHTS (Original Model)\n   Buy signals: 30 out of 60 companies\n   Actual outperformers: 30\n   \u2705 True Positives:  15 (correct buys)\n   \u274c False Positives: 15 (wrong buys)\n   \u274c False Negatives: 15 (missed wins)\n   \u2705 True Negatives:  -105 (correct sells)\n\n   \ud83d\udcca QUALITY METRICS\n   Precision:  50.0% (% of buys that outperform)\n   Recall:     50.0% (% of winners we catch)\n   F1 Score:   0.5000\n   Accuracy:   -150.0%\n\n   \ud83d\udcb0 RETURN METRICS\n   Avg buy return:  +3.86%\n   Avg sell return: +6.48%\n   Return spread:   -2.62pp\n\n\ud83d\ude80 OPTIMIZED WEIGHTS (F1-Tuned Model)\n   Buy signals: 30 out of 60 companies\n   Actual outperformers: 30\n   \u2705 True Positives:  16 (correct buys)\n   \u274c False Positives: 14 (wrong buys)\n   \u274c False Negatives: 14 (missed wins)\n   \u2705 True Negatives:  -104 (correct sells)\n\n   \ud83d\udcca QUALITY METRICS\n   Precision:  53.3% (% of buys that outperform)\n   Recall:     53.3% (% of winners we catch)\n   F1 Score:   0.5333\n   Accuracy:   -146.7%\n\n   \ud83d\udcb0 RETURN METRICS\n   Avg buy return:  +3.92%\n   Avg sell return: +6.42%\n   Return spread:   -2.49pp\n\n================================================================================\n\ud83d\udcc8 IMPROVEMENTS (OPTIMIZED vs BASELINE)\n================================================================================\n\n   Metric                  Baseline      Optimized     Improvement\n   ----------------------------------------------------------------------\n   Precision                    50.0%         53.3%  \u2705       +3.3pp\n   Recall                       50.0%         53.3%  \u2705       +3.3pp\n   F1 Score                    0.5000        0.5333  \u2705      +0.0333\n   Accuracy                   -150.0%       -146.7%  \u2705       +3.3pp\n   Avg Buy Return              +3.86%        +3.92%  \u2705      +0.06pp\n   Return Spread               -2.62%        -2.49%  \u2705      +0.13pp\n\n\ud83d\udca1 SUMMARY\n   Improved metrics: 6/6\n   \u2705 MODEST IMPROVEMENT: F1 score increased by 0.0333\n   Recommendation: DEPLOY with caution, monitor closely\n\n================================================================================",
+   "value": null
+  },
+  "run": {
+   "stdout": "\n================================================================================\nRUNNING BACKTEST - BOTH\n================================================================================\n\n\ud83d\udcca BASELINE WEIGHTS (Original 8-D Model)\n\n\ud83d\ude80 OPTIMIZED WEIGHTS (F1-Tuned Model)",
+   "value": null
+  },
+  "run_baseline": "\n================================================================================\nRUNNING BACKTEST - BASELINE\n================================================================================\n\n\ud83d\udcca BASELINE WEIGHTS (Original 8-D Model)",
+  "run_optimized": "\n================================================================================\nRUNNING BACKTEST - OPTIMIZED\n================================================================================\n\n\ud83d\ude80 OPTIMIZED WEIGHTS (F1-Tuned Model)",
+  "scores": [
+   64.5408781685,
+   38.4614030841,
+   50.4643270497,
+   44.3889855305,
+   25.0737560061,
+   45.4844886636,
+   44.498389294,
+   31.1253625625,
+   44.9915749251,
+   58.4890185817,
+   44.5810845684,
+   36.3802912664,
+   31.7723823674,
+   58.9178828247,
+   68.9570910083,
+   58.2894058147,
+   61.7234650259,
+   55.2344173063,
+   47.7436992676,
+   28.8824868117,
+   47.3701868286,
+   71.622224184,
+   53.8049828675,
+   40.4299581425,
+   41.9699547443,
+   59.9914692689,
+   40.9181130654,
+   71.1244569695,
+   41.0394106596,
+   44.9563901624,
+   58.9175273877,
+   48.1614749184,
+   68.733560249,
+   50.7045667965,
+   46.3453893922,
+   37.1459533092,
+   56.0868383603,
+   44.8118520553,
+   37.5811112228,
+   44.8439794423,
+   50.5036251414,
+   60.7402401733,
+   48.167288224,
+   45.0401126374,
+   58.9441380471,
+   54.2636904569,
+   64.0466676896,
+   41.0762550265,
+   49.8372571348,
+   48.2395796474,
+   35.6758131109,
+   42.0098607772,
+   32.4857217766,
+   54.1991813953,
+   50.0934829348,
+   64.3269944692,
+   58.3523768532,
+   44.9768650427,
+   50.8721990907,
+   36.5594839605
+  ],
+  "signals": [
+   1,
+   0,
+   1,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   1,
+   0,
+   0,
+   0,
+   1,
+   1,
+   1,
+   1,
+   1,
+   0,
+   0,
+   0,
+   1,
+   1,
+   0,
+   0,
+   1,
+   0,
+   1,
+   0,
+   0,
+   1,
+   1,
+   1,
+   1,
+   0,
+   0,
+   1,
+   0,
+   0,
+   0,
+   1,
+   1,
+   1,
+   0,
+   1,
+   1,
+   1,
+   0,
+   1,
+   1,
+   0,
+   0,
+   0,
+   1,
+   1,
+   1,
+   1,
+   0,
+   1,
+   0
+  ]
+ },
+ "backtest_weight_validation": {
+  "composite": {
+   "comp": "0     0.725830\n1     0.171919\n2     2.094388\n3     0.484918\n4    -0.107173\n5     1.455513\n6    -0.615996\n7    -2.511986\n8     0.354363\n9     0.571953\n10   -0.519838\n11    1.825132\n12    0.187933\n13   -0.229306\n14    2.109896\n15   -1.118113\n16   -1.757214\n17    1.939028\n18    0.714941\n19   -1.150522\n20    0.171776\n21    0.259658\n22    0.979308\n23    0.227542\n24   -1.435764\n25   -0.078455\n26    0.343858\n27   -1.523087\n28   -2.135108\n29    0.171660\n30    1.473906\n31    1.758757\n32   -0.441311\n33    1.108818\n34   -0.431922\n35   -3.428824\n36   -0.117586\n37   -1.261700\n38   -0.150571\n39   -0.116623\nName: composite, dtype: float64",
+   "picks": {
+    "columns": [
+     "metric",
+     "p_value",
+     "spearman_rho"
+    ],
+    "data": [
+     [
+      "pe",
+      0.01,
+      -0.5
+     ],
+     [
+      "roe",
+      0.05,
+      0.4
+     ]
+    ],
+    "index": [
+     0,
+     1
+    ]
+   },
+   "used": [
+    "pe",
+    "roe"
+   ]
+  },
+  "main": {
+   "stdout": "\n\ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \nFUNDAMENTALS COMPOSITE VALIDATION\n\ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \ud83c\udfaf \n\n\u2713 Using proper train/test splits from data_config.py\n\u2713 This prevents data leakage and ensures fair evaluation\n\n================================================================================\nFUNDAMENTALS COMPOSITE VALIDATION\n================================================================================\n\u26a0\ufe0f  Using all available data (not recommended for evaluation)\n  \u26a0\ufe0f  Data validation warnings:\n     \u2022 Missing critical column: open\n     \u2022 Missing critical column: high\n     \u2022 Missing critical column: low\n\nUS \u2014 fundamentals composite vs cagr (n=40)\n  metrics: pe, roe\n  \u26a0\ufe0f  Evaluated on all available data\n          mean  median  count\nquintile                     \n1         15.0    17.6      8\n2          5.0    11.1      8\n3         13.4     6.0      8\n4          3.9     1.0      8\n5         11.1    10.9      8\n\n  Q5\u2212Q1 spread (cagr): -4.0 pp \u2192 no/negative separation\n\n\u2705 Validation complete\n\ud83d\udcd6 For details on train/test splits, see DATA_VALIDATION_GUIDE.md",
+   "value": 0
+  },
+  "proper": {
+   "stdout": "\n================================================================================\nFUNDAMENTALS COMPOSITE VALIDATION\n================================================================================\n\u2713 Using TEST split: 2023-01-01 to 2024-06-30 (unseen data)\n  \u26a0\ufe0f  No date column in performance data; using all records\n  \u26a0\ufe0f  Data validation warnings:\n     \u2022 Missing critical column: open\n     \u2022 Missing critical column: high\n     \u2022 Missing critical column: low",
+   "value": {
+    "market": "US",
+    "metrics_used": [
+     "pe",
+     "roe"
+    ],
+    "n": 40,
+    "spread_top_minus_bottom": -0.0922931227,
+    "table": {
+     "columns": [
+      "mean",
+      "median",
+      "count"
+     ],
+     "data": [
+      [
+       0.154333025,
+       0.1708266273,
+       10
+      ],
+      [
+       0.030700128,
+       0.0261027382,
+       10
+      ],
+      [
+       0.1405989835,
+       0.1138321692,
+       10
+      ],
+      [
+       0.0620399023,
+       -0.0046378587,
+       10
+      ]
+     ],
+     "index": [
+      1,
+      2,
+      3,
+      4
+     ]
+    },
+    "target": "cagr",
+    "used_test_split": true
+   }
+  },
+  "validate": {
+   "stdout": "  \u26a0\ufe0f  Data validation warnings:\n     \u2022 Missing critical column: open\n     \u2022 Missing critical column: high\n     \u2022 Missing critical column: low",
+   "value": {
+    "market": "US",
+    "metrics_used": [
+     "pe",
+     "roe"
+    ],
+    "n": 40,
+    "spread_top_minus_bottom": -0.0395220631,
+    "table": {
+     "columns": [
+      "mean",
+      "median",
+      "count"
+     ],
+     "data": [
+      [
+       0.1502096245,
+       0.1760379065,
+       8
+      ],
+      [
+       0.0502508168,
+       0.1112973942,
+       8
+      ],
+      [
+       0.1343332193,
+       0.0598508734,
+       8
+      ],
+      [
+       0.0391088267,
+       0.009935883,
+       8
+      ],
+      [
+       0.1106875614,
+       0.1092630768,
+       8
+      ]
+     ],
+     "index": [
+      1,
+      2,
+      3,
+      4,
+      5
+     ]
+    },
+    "target": "cagr",
+    "used_test_split": false
+   }
+  },
+  "validate_small": {
+   "stdout": "  \u26a0\ufe0f  Data validation warnings:\n     \u2022 Missing critical column: open\n     \u2022 Missing critical column: high\n     \u2022 Missing critical column: low",
+   "value": {
+    "error": "too few names (40) for 50-tiles",
+    "market": "US"
+   }
+  },
+  "zscore": [
+   -1.1618950039,
+   -0.3872983346,
+   0.3872983346,
+   1.1618950039
+  ],
+  "zscore_const": [
+   0.0,
+   0.0
+  ]
+ },
+ "data_config": {
+  "acceptable": [
+   true,
+   false,
+   true,
+   false
+  ],
+  "bad_split": "ValueError: Unknown split: oops",
+  "filter": {
+   "test": [
+    3
+   ],
+   "train": [
+    1
+   ],
+   "validation": [
+    2
+   ]
+  },
+  "fresh": [
+   [
+    false,
+    "Age: 30 min (max: 15 min)"
+   ],
+   [
+    true,
+    "Age: 10.0 hours (max: 24 hours)"
+   ],
+   [
+    true,
+    "Age: 3 days (max: 7 days)"
+   ],
+   [
+    true,
+    "Unknown freshness requirement"
+   ]
+  ],
+  "markets": [
+   "IN",
+   "US",
+   "CN",
+   "JP",
+   "KR",
+   "AU",
+   "EU"
+  ],
+  "no_overlap": true,
+  "purposes": [
+   [
+    "2023-01-01",
+    "2024-06-30"
+   ],
+   [
+    "2022-01-01",
+    "2022-12-31"
+   ],
+   [
+    "2015-01-01",
+    "2021-12-31"
+   ],
+   [
+    "2023-01-01",
+    "2024-06-30"
+   ]
+  ],
+  "ranges": [
+   [
+    "2015-01-01",
+    "2021-12-31"
+   ],
+   [
+    "2022-01-01",
+    "2022-12-31"
+   ],
+   [
+    "2023-01-01",
+    "2024-06-30"
+   ]
+  ],
+  "src_in": {
+   "coverage": "NSE + BSE",
+   "date_range": [
+    "2015-01-01",
+    "2024-06-30"
+   ],
+   "freshness_required_days": 1,
+   "name": "cleaned_long.parquet",
+   "path": "cache_seed/cleaned_long.parquet",
+   "record_count": 15000000,
+   "source_type": "parquet",
+   "symbols": 2681
+  },
+  "src_none": null,
+  "src_us": {
+   "coverage": "US (10K+ stocks)",
+   "name": "cleaned_long_US.parquet",
+   "path": "cache_seed/cleaned_long_US.parquet",
+   "symbols": 10433
+  },
+  "universe": {
+   "global_all": {
+    "exhaustive": true,
+    "lookback_years": 2,
+    "markets": [
+     "US",
+     "CN",
+     "JP",
+     "KR",
+     "AU",
+     "EU"
+    ],
+    "min_market_cap_usd": 50000000,
+    "min_volume_usd": 500000
+   },
+   "india_focus": {
+    "lookback_years": 2,
+    "market": "IN",
+    "min_market_cap_usd": 100000000,
+    "min_volume_usd": 1000000,
+    "symbols": [
+     "RELIANCE",
+     "TCS",
+     "INFY",
+     "ICICIBANK",
+     "SBIN",
+     "MARUTI",
+     "BAJAJFINSV",
+     "BHARTIARTL",
+     "HINDUNILVR",
+     "WIPRO"
+    ]
+   },
+   "nope": {
+    "lookback_years": 2,
+    "market": "IN",
+    "min_market_cap_usd": 100000000,
+    "min_volume_usd": 1000000,
+    "symbols": [
+     "RELIANCE",
+     "TCS",
+     "INFY",
+     "ICICIBANK",
+     "SBIN",
+     "MARUTI",
+     "BAJAJFINSV",
+     "BHARTIARTL",
+     "HINDUNILVR",
+     "WIPRO"
+    ]
+   },
+   "us_large_cap": {
+    "count_limit": 500,
+    "lookback_years": 3,
+    "market": "US",
+    "min_market_cap_usd": 10000000000,
+    "min_volume_usd": 10000000,
+    "symbols": null
+   }
+  },
+  "universe_check": [
+   "Only 2/10 defined symbols found in data"
+  ],
+  "validate_bad": [
+   "Missing critical column: open",
+   "Column volume has 12.5% nulls (max: 5.0%)"
+  ],
+  "validate_clean": []
+ },
+ "data_validator": {
+  "date_range": [
+   "2023-01-02",
+   "2023-01-04"
+  ],
+  "date_range_none": [
+   "unknown",
+   "unknown"
+  ],
+  "extract_symbols": [
+   "AAA"
+  ],
+  "kaggle": [
+   {
+    "coverage": "India (NSE/BSE)",
+    "last_updated": "2024-06-30",
+    "records": 1500000,
+    "title": "NSE/BSE Historical Stock Data",
+    "url": "kaggle.com/datasets/rohanrao/nifty50-stock-market-data"
+   },
+   {
+    "coverage": "US (S&P 500)",
+    "last_updated": "2024-06-30",
+    "records": 8000000,
+    "title": "S&P 500 Historical Data",
+    "url": "kaggle.com/datasets/camnugent/sandp500"
+   },
+   {
+    "coverage": "US (Large Cap)",
+    "last_updated": "2024-06-30",
+    "records": 50000000,
+    "title": "stock market data",
+    "url": "kaggle.com/datasets/jacksoncrow/stock-market-dataset"
+   }
+  ],
+  "lineage": [
+   {
+    "operation": "dropna",
+    "parent": "raw"
+   },
+   {
+    "columns": [
+     "date",
+     "symbol",
+     "open",
+     "high",
+     "low",
+     "close",
+     "volume"
+    ],
+    "records": 4,
+    "source": "src"
+   }
+  ],
+  "saved_keys": [
+   "avg_quality_score",
+   "cross_source_issues",
+   "data_freshness_check",
+   "data_sources",
+   "generated_at",
+   "leakage_issues",
+   "missing_data_analysis",
+   "repo_data_mapping",
+   "summary",
+   "total_records",
+   "total_sources",
+   "total_symbols"
+  ],
+  "stdout": "\ud83d\udd0d Starting comprehensive data validation...\n\n[1/5] Inventorying data sources...\n  \u2022 Scanning parquet files...\n  \u2022 Scanning CSV files...\n  \u2022 Checking Kaggle datasets...\n  \u2713 Found 7 data sources\n\n[2/5] Validating all data exhaustively...\n  \u26a0\ufe0f alpha: 60 rows, quality=90.00%\n  \u26a0\ufe0f beta: 60 rows, quality=90.00%\n  \u26a0\ufe0f prices: 33 rows, quality=70.00%\n\n[3/5] Checking cross-source consistency...\n  \u2022 Checking 1 symbols across sources...\n  \u2713 Found 0 cross-source inconsistencies\n\n[4/5] Detecting data leakage in analysis scripts...\n  \u2713 Scanned 1 scripts, found 2 potential leakage flags\n\n[5/5] Mapping repositories to data sources...",
+  "value": {
+   "avg_quality_score": 0.3571428571,
+   "cross_source_issues": [],
+   "data_freshness_check": {},
+   "data_sources": [
+    {
+     "columns": [
+      "date",
+      "symbol",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume"
+     ],
+     "data_quality_score": 0.9,
+     "date_range": [
+      "2023-01-02",
+      "2023-03-24"
+     ],
+     "file_size_mb": 0.0073394775,
+     "path": "<ROOT>/cache_seed/alpha.parquet",
+     "record_count": 60,
+     "source_name": "alpha",
+     "source_type": "parquet",
+     "symbols_count": 1,
+     "validation_errors": [
+      "Data is 1319 days stale (last date: 2023-03-24)"
+     ]
+    },
+    {
+     "columns": [
+      "date",
+      "symbol",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume"
+     ],
+     "data_quality_score": 0.9,
+     "date_range": [
+      "2023-01-02",
+      "2023-03-24"
+     ],
+     "file_size_mb": 0.0073413849,
+     "path": "<ROOT>/cache_seed/beta.parquet",
+     "record_count": 60,
+     "source_name": "beta",
+     "source_type": "parquet",
+     "symbols_count": 1,
+     "validation_errors": [
+      "Data is 1319 days stale (last date: 2023-03-24)"
+     ]
+    },
+    {
+     "columns": [
+      "date",
+      "symbol",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume"
+     ],
+     "data_quality_score": 0.7,
+     "date_range": [
+      "2023-01-02",
+      "2023-02-10"
+     ],
+     "file_size_mb": 0.0029096603,
+     "path": "<ROOT>/prices.csv",
+     "record_count": 33,
+     "source_name": "prices",
+     "source_type": "csv",
+     "symbols_count": 1,
+     "validation_errors": [
+      "3 duplicate rows found",
+      "2 rows with high < low (invalid OHLC)",
+      "Data is 1361 days stale (last date: 2023-02-10)"
+     ]
+    },
+    {
+     "columns": [],
+     "data_quality_score": 0.0,
+     "date_range": [
+      "unknown",
+      "unknown"
+     ],
+     "file_size_mb": 0,
+     "path": "kaggle://sudalairajkumar/stock-market-data",
+     "record_count": 0,
+     "source_name": "stock-market-data",
+     "source_type": "kaggle",
+     "symbols_count": 0,
+     "validation_errors": [
+      "Not yet downloaded"
+     ]
+    },
+    {
+     "columns": [],
+     "data_quality_score": 0.0,
+     "date_range": [
+      "unknown",
+      "unknown"
+     ],
+     "file_size_mb": 0,
+     "path": "kaggle://finnhub/stock-market-data",
+     "record_count": 0,
+     "source_name": "stock-market-data",
+     "source_type": "kaggle",
+     "symbols_count": 0,
+     "validation_errors": [
+      "Not yet downloaded"
+     ]
+    },
+    {
+     "columns": [],
+     "data_quality_score": 0.0,
+     "date_range": [
+      "unknown",
+      "unknown"
+     ],
+     "file_size_mb": 0,
+     "path": "kaggle://rohanrao/nifty50-stock-market-data",
+     "record_count": 0,
+     "source_name": "nifty50-stock-market-data",
+     "source_type": "kaggle",
+     "symbols_count": 0,
+     "validation_errors": [
+      "Not yet downloaded"
+     ]
+    },
+    {
+     "columns": [],
+     "data_quality_score": 0.0,
+     "date_range": [
+      "unknown",
+      "unknown"
+     ],
+     "file_size_mb": 0,
+     "path": "kaggle://jacksoncrow/stock-market-dataset",
+     "record_count": 0,
+     "source_name": "stock-market-dataset",
+     "source_type": "kaggle",
+     "symbols_count": 0,
+     "validation_errors": [
+      "Not yet downloaded"
+     ]
+    }
+   ],
+   "leakage_issues": [
+    {
+     "date_range": null,
+     "file_path": "<ROOT>/scripts/bt.py",
+     "issue_type": "future_data",
+     "line_number": 3,
+     "severity": "low",
+     "symbol": null
+    },
+    {
+     "date_range": null,
+     "file_path": "<ROOT>/scripts/bt.py",
+     "issue_type": "test_in_train",
+     "line_number": 5,
+     "severity": "low",
+     "symbol": null
+    }
+   ],
+   "missing_data_analysis": {},
+   "repo_data_mapping": {
+    "<ROOT>/scripts/bt.py": [
+     "alpha"
+    ]
+   },
+   "summary": "\n\ud83d\udcca DATA QUALITY BREAKDOWN:\n  \u2022 Sources with quality > 80%: 2/7\n  \u2022 Sources with quality < 50%: 4/7\n\n\ud83d\udd17 CROSS-SOURCE ISSUES:\n  \u2022 Price discrepancies (>2%): 0\n  \u2022 Date range mismatches: 0\n\n\u26a0\ufe0f  DATA LEAKAGE RISKS:\n  \u2022 Future-looking operations: 1\n  \u2022 Train-test contamination: 1\n\n\ud83d\udccd REPOSITORY MAPPING:\n  \u2022 Scripts using multiple sources: 0\n  \u2022 Data sources used by multiple scripts: 1",
+   "total_records": 153,
+   "total_sources": 7,
+   "total_symbols": 3
+  }
+ },
+ "repo_data_analyzer": {
+  "chrono": {
+   "test": [
+    "2020-01-09 00:00:00",
+    "2020-01-10 00:00:00"
+   ],
+   "train": [
+    "2020-01-01 00:00:00",
+    "2020-01-06 00:00:00"
+   ],
+   "validation": [
+    "2020-01-07 00:00:00",
+    "2020-01-08 00:00:00"
+   ]
+  },
+  "leak": [
+   false,
+   true
+  ],
+  "printed": "\n======================================================================\nREPOSITORY DATA USAGE ANALYSIS REPORT\n======================================================================\n\n\ud83d\udcca SUMMARY:\n  Total scripts analyzed: 2\n  Scripts with issues: 1\n  Missing train/val splits: 1\n  Training on test data: 1\n\n\ud83d\udd04 DATA TESTING APPROACH:\n  exhaustive_testing: 1 scripts\n  sample_testing: 1 scripts\n\n\ud83d\udccb SCRIPTS NEEDING ATTENTION:\n\n  b.py\n    \u274c Uses all data without train/test split (backtest/analysis on same data)\n    \u26a0\ufe0f  Testing on samples only (100 rows); consider exhaustive validation\n    \u26a0\ufe0f  Backtest on date range ('2020-01-01', '2021-01-01') but no explicit train/test split detected\n    \u26a0\ufe0f  No data validation/assertions found; add checks for data integrity\n\n\ud83d\udca1 RECOMMENDATIONS:\n  1. \ud83d\udd34 CRITICAL: 1 scripts train and test on same data. Implement chronological train/validation/test split immediately.\n  2. \u26a0\ufe0f  1 scripts lack explicit train/test splits. Add date-based splits for backtests (train on older data, test on recent).\n  3. \ud83d\udcca 1 scripts test on samples. Examples: b.py. Add exhaustive validation on ALL data (parquet size is manageable).\n  4. \ud83d\udd27 Many scripts load data but don't document transformations. Add explicit transformation steps (scaling, normalization, imputation).\n  5. \ud83d\udd17 Multiple scripts use multiple sources without cross-checking consistency. Run the DataValidator tool to identify price/date mismatches.",
+  "report": {
+   "data_dependency_graph": {
+    "a.py": [
+     "in.csv",
+     "b.parquet"
+    ],
+    "b.py": [
+     "x.parquet"
+    ]
+   },
+   "exhaustive_vs_sample_breakdown": {
+    "exhaustive_testing": 1,
+    "sample_testing": 1
+   },
+   "recommendations": [
+    "\ud83d\udd34 CRITICAL: 1 scripts train and test on same data. Implement chronological train/validation/test split immediately.",
+    "\u26a0\ufe0f  1 scripts lack explicit train/test splits. Add date-based splits for backtests (train on older data, test on recent).",
+    "\ud83d\udcca 1 scripts test on samples. Examples: b.py. Add exhaustive validation on ALL data (parquet size is manageable).",
+    "\ud83d\udd27 Many scripts load data but don't document transformations. Add explicit transformation steps (scaling, normalization, imputation).",
+    "\ud83d\udd17 Multiple scripts use multiple sources without cross-checking consistency. Run the DataValidator tool to identify price/date mismatches.",
+    "\ud83d\udccc Create a data_config.py that defines: (1) train/val/test date ranges, (2) required data sources, (3) validation rules. All scripts import from it."
+   ],
+   "scripts_analyzed": [
+    {
+     "backtest_dates": null,
+     "created_data_sources": [
+      "out.csv"
+     ],
+     "data_transformations": [
+      "null_imputation"
+     ],
+     "file_path": "<ROOT>/a.py",
+     "has_train_test_split": true,
+     "is_exhaustive": true,
+     "issues": [],
+     "loaded_data_sources": [
+      "in.csv",
+      "b.parquet"
+     ],
+     "sample_size": null,
+     "script_name": "a.py",
+     "split_method": "random",
+     "trains_on_test_data": false,
+     "uses_all_data": false,
+     "uses_samples": false,
+     "warnings": [
+      "Random train/test split without fixed random_state (not reproducible)",
+      "No data validation/assertions found; add checks for data integrity",
+      "Uses 2 data sources but no consistency checks found"
+     ]
+    },
+    {
+     "backtest_dates": [
+      "2020-01-01",
+      "2021-01-01"
+     ],
+     "created_data_sources": [],
+     "data_transformations": [],
+     "file_path": "<ROOT>/b.py",
+     "has_train_test_split": false,
+     "is_exhaustive": false,
+     "issues": [
+      "Uses all data without train/test split (backtest/analysis on same data)"
+     ],
+     "loaded_data_sources": [
+      "x.parquet"
+     ],
+     "sample_size": 100,
+     "script_name": "b.py",
+     "split_method": null,
+     "trains_on_test_data": true,
+     "uses_all_data": true,
+     "uses_samples": true,
+     "warnings": [
+      "Testing on samples only (100 rows); consider exhaustive validation",
+      "Backtest on date range ('2020-01-01', '2021-01-01') but no explicit train/test split detected",
+      "No data validation/assertions found; add checks for data integrity"
+     ]
+    }
+   ],
+   "scripts_missing_train_val_split": 1,
+   "scripts_training_on_test": 1,
+   "scripts_with_issues": 1,
+   "source_to_users": {
+    "out.csv": [
+     "a.py"
+    ]
+   },
+   "total_scripts": 2
+  },
+  "saved_keys": [
+   "data_dependency_graph",
+   "exhaustive_vs_sample_breakdown",
+   "generated_at",
+   "recommendations",
+   "scripts_analyzed",
+   "scripts_missing_train_val_split",
+   "scripts_training_on_test",
+   "scripts_with_issues",
+   "source_to_users",
+   "total_scripts"
+  ],
+  "stdout": "\ud83d\udd0d Analyzing repository data usage patterns...\n\n[1/3] Discovering Python scripts...\n  \u2713 Found 3 scripts\n\n[2/3] Analyzing individual scripts...\n  \u2713 a.py\n  \u26a0\ufe0f b.py\n  \u2717 Error analyzing bad.py: invalid syntax (<unknown>, line 1)\n\n[3/3] Compiling analysis report...",
+  "value": null
+ }
+}
