@@ -53,6 +53,21 @@ def _freeze_clock(module):
         module.datetime = real
 
 
+@contextlib.contextmanager
+def _sorted_glob():
+    """Make ``Path.glob`` yield in name order (raw order is filesystem-dependent: APFS vs ext4)."""
+    real = Path.glob
+
+    def glob(self, pattern):
+        return iter(sorted(real(self, pattern)))
+
+    Path.glob = glob
+    try:
+        yield
+    finally:
+        Path.glob = real
+
+
 def _capture(fn: Callable[[], Any], root: str) -> Dict[str, Any]:
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -148,7 +163,7 @@ class _FrozenDatetime(datetime):
 def case_data_validator() -> Dict[str, Any]:
     import data_validator as dv
 
-    with tempfile.TemporaryDirectory() as tmp, _freeze_clock(dv):
+    with tempfile.TemporaryDirectory() as tmp, _freeze_clock(dv), _sorted_glob():
         root = Path(tmp)
         _make_data_tree(root)
         validator = dv.DataValidator(base_path=str(root))
