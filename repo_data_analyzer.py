@@ -15,13 +15,31 @@ Usage:
     analysis.print_report()
 """
 
+from __future__ import annotations
+
 import ast
-import re
-from pathlib import Path
-from typing import Dict, List, Set, Tuple, Optional
-from dataclasses import dataclass, asdict, field
-from datetime import datetime
 import json
+import re
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+# Default project root scanned when no ``base_path`` is given (owner's local checkout).
+DEFAULT_BASE_PATH = "/Users/umashankar/Downloads/code/python_files"
+
+# At most this many scripts (sorted by path) are analysed per run.
+MAX_SCRIPTS = 100
+# Any path containing one of these substrings is skipped (plain substring match, as before).
+EXCLUDE_PATTERNS = ("__pycache__", ".git", ".pytest_cache", "site-packages", "venv", "env")
+
+# Call names recognised by the AST pass.
+LOAD_CALLS = frozenset({"read_parquet", "read_csv", "read_excel"})
+SAVE_CALLS = frozenset({"to_parquet", "to_csv"})
+SAMPLE_CALLS = frozenset({"shuffle", "sample"})
 
 
 @dataclass
@@ -72,29 +90,29 @@ class RepositoryAnalysisReport:
     # Recommendations
     recommendations: List[str] = field(default_factory=list)
 
-    def save_report(self, path: str):
+    def save_report(self, path: str) -> None:
         """Save report as JSON."""
         data = asdict(self)
         with open(path, 'w') as f:
             json.dump(data, f, indent=2, default=str)
 
-    def print_report(self):
+    def print_report(self) -> None:
         """Print human-readable report."""
         print("\n" + "="*70)
         print("REPOSITORY DATA USAGE ANALYSIS REPORT")
         print("="*70)
         print(f"Generated: {self.generated_at}")
-        print(f"\n📊 SUMMARY:")
+        print("\n📊 SUMMARY:")
         print(f"  Total scripts analyzed: {self.total_scripts}")
         print(f"  Scripts with issues: {self.scripts_with_issues}")
         print(f"  Missing train/val splits: {self.scripts_missing_train_val_split}")
         print(f"  Training on test data: {self.scripts_training_on_test}")
 
-        print(f"\n🔄 DATA TESTING APPROACH:")
+        print("\n🔄 DATA TESTING APPROACH:")
         for approach, count in self.exhaustive_vs_sample_breakdown.items():
             print(f"  {approach}: {count} scripts")
 
-        print(f"\n📋 SCRIPTS NEEDING ATTENTION:")
+        print("\n📋 SCRIPTS NEEDING ATTENTION:")
         for script in self.scripts_analyzed:
             if script.issues or script.trains_on_test_data:
                 print(f"\n  {script.script_name}")
@@ -105,7 +123,7 @@ class RepositoryAnalysisReport:
                     for warn in script.warnings:
                         print(f"    ⚠️  {warn}")
 
-        print(f"\n💡 RECOMMENDATIONS:")
+        print("\n💡 RECOMMENDATIONS:")
         for i, rec in enumerate(self.recommendations[:5], 1):
             print(f"  {i}. {rec}")
 
@@ -113,10 +131,10 @@ class RepositoryAnalysisReport:
 class RepositoryDataAnalyzer:
     """Main analyzer coordinator."""
 
-    def __init__(self, base_path: str = "/Users/umashankar/Downloads/code/python_files"):
+    def __init__(self, base_path: str = DEFAULT_BASE_PATH):
         self.base_path = Path(base_path)
-        self.scripts = []
-        self.report = None
+        self.scripts: List[Path] = []
+        self.report: Optional[RepositoryAnalysisReport] = None
 
     def analyze_all(self) -> RepositoryAnalysisReport:
         """Run complete repository analysis."""
@@ -146,16 +164,11 @@ class RepositoryDataAnalyzer:
     def _discover_scripts(self) -> List[Path]:
         """Find all Python scripts in repo."""
         scripts = list(self.base_path.glob("**/*.py"))
-        # Filter out common non-analysis scripts
-        exclude_patterns = [
-            "__pycache__", ".git", ".pytest_cache",
-            "site-packages", "venv", "env"
-        ]
         filtered = [
             s for s in scripts
-            if not any(p in str(s) for p in exclude_patterns)
+            if not any(p in str(s) for p in EXCLUDE_PATTERNS)
         ]
-        return sorted(filtered)[:100]  # Limit for analysis
+        return sorted(filtered)[:MAX_SCRIPTS]  # Limit for analysis
 
     def _analyze_script(self, script_path: Path) -> Optional[ScriptAnalysis]:
         """Analyze a single Python script."""
@@ -184,14 +197,14 @@ class RepositoryDataAnalyzer:
             print(f"  ✗ Error analyzing {script_path.name}: {e}")
             return None
 
-    def _analyze_ast(self, tree: ast.AST, analysis: ScriptAnalysis, content: str):
+    def _analyze_ast(self, tree: ast.AST, analysis: ScriptAnalysis, content: str) -> None:
         """Analyze Abstract Syntax Tree."""
         for node in ast.walk(tree):
             # Detect data loading
             if isinstance(node, ast.Call):
                 func_name = self._get_func_name(node.func)
 
-                if func_name in ['read_parquet', 'read_csv', 'read_excel']:
+                if func_name in LOAD_CALLS:
                     # Extract filename
                     if node.args:
                         filename = self._extract_string_arg(node.args[0])
@@ -205,16 +218,16 @@ class RepositoryDataAnalyzer:
                         if keyword.arg == 'test_size':
                             analysis.split_method = 'random'
 
-                elif func_name in ['shuffle', 'sample']:
+                elif func_name in SAMPLE_CALLS:
                     analysis.uses_samples = True
 
-                elif func_name in ['to_parquet', 'to_csv']:
+                elif func_name in SAVE_CALLS:
                     if node.args:
                         filename = self._extract_string_arg(node.args[0])
                         if filename:
                             analysis.created_data_sources.append(filename)
 
-    def _analyze_patterns(self, content: str, analysis: ScriptAnalysis):
+    def _analyze_patterns(self, content: str, analysis: ScriptAnalysis) -> None:
         """Pattern-based analysis for data operations."""
 
         # Detect backtest date ranges
@@ -260,13 +273,13 @@ class RepositoryDataAnalyzer:
             transformations.append("null_removal")
         analysis.data_transformations = transformations
 
-    def _identify_issues(self, analysis: ScriptAnalysis, content: str):
+    def _identify_issues(self, analysis: ScriptAnalysis, content: str) -> None:
         """Identify data handling issues."""
 
         # Issue 1: No train/test split
         if not analysis.has_train_test_split and analysis.uses_all_data:
             analysis.issues.append(
-                f"Uses all data without train/test split (backtest/analysis on same data)"
+                "Uses all data without train/test split (backtest/analysis on same data)"
             )
 
         # Issue 2: Sample-based testing instead of exhaustive
@@ -415,8 +428,6 @@ class RepositoryDataAnalyzer:
         """Extract string literal from AST node."""
         if isinstance(arg_node, ast.Constant) and isinstance(arg_node.value, str):
             return arg_node.value
-        elif isinstance(arg_node, ast.Str):  # Python 3.7 compat
-            return arg_node.s
         return None
 
 
@@ -429,15 +440,13 @@ class DataSplitValidator:
 
     @staticmethod
     def validate_chronological_split(
-        df: 'pd.DataFrame',
+        df: pd.DataFrame,
         date_col: str,
         train_ratio: float = 0.6,
         val_ratio: float = 0.2,
         test_ratio: float = 0.2,
     ) -> Dict[str, Tuple[datetime, datetime]]:
-        """Validate chronological train/val/test split."""
-        import pandas as pd
-
+        """Return (first, last) date of each chronological train/validation/test block of ``df``."""
         df_sorted = df.sort_values(date_col)
         n = len(df_sorted)
 

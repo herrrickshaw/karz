@@ -1,0 +1,25 @@
+[project]
+name = "karz"
+version = "1.0.0"
+description = "Data validation, consistency checking and leakage detection for stock screening and backtesting"
+requires-python = ">=3.9"
+dependencies = ["pandas", "numpy"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "pyarrow"]
+
+[tool.setuptools]
+py-modules = ["data_config", "data_validator", "repo_data_analyzer",
+              "backtest_weight_optimization", "backtest_weight_validation"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]

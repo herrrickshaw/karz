@@ -19,12 +19,11 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Dict, Optional, Tuple, List
-
-import numpy as np
-import pandas as pd
+from typing import Dict
 
 import correlation_analysis as ca
+import numpy as np
+import pandas as pd
 
 # Import data configuration for proper train/test splits
 try:
@@ -89,7 +88,7 @@ def validate(market: str, target: str = "cagr", q: int = 5, use_test_split: bool
             merged = merged[merged.index.isin(perf_test.index)]
             print(f"  ✓ Applied TEST split: {len(merged)} records from 2023-2024")
         else:
-            print(f"  ⚠️  No date column in performance data; using all records")
+            print("  ⚠️  No date column in performance data; using all records")
 
     # Validate data quality
     if HAS_DATA_CONFIG:
@@ -99,7 +98,7 @@ def validate(market: str, target: str = "cagr", q: int = 5, use_test_split: bool
             if len(df_check) > 0:
                 errors = config.validation.validate_dataframe(df_check)
                 if errors:
-                    print(f"  ⚠️  Data validation warnings:")
+                    print("  ⚠️  Data validation warnings:")
                     for error in errors[:3]:  # Show first 3 errors
                         print(f"     • {error}")
 
@@ -142,7 +141,7 @@ def validate_with_proper_split(
         Results dictionary
     """
     print(f"\n{'='*80}")
-    print(f"FUNDAMENTALS COMPOSITE VALIDATION")
+    print("FUNDAMENTALS COMPOSITE VALIDATION")
     print(f"{'='*80}")
 
     if use_test_split and HAS_DATA_CONFIG:
@@ -150,7 +149,7 @@ def validate_with_proper_split(
         test_start, test_end = config.date_splits.get_test_range()
         print(f"✓ Using TEST split: {test_start} to {test_end} (unseen data)")
     else:
-        print(f"⚠️  Using all available data (not recommended for evaluation)")
+        print("⚠️  Using all available data (not recommended for evaluation)")
 
     return validate(market, target, quantiles, use_test_split=use_test_split)
 
@@ -171,8 +170,8 @@ def main() -> int:
     print("\n" + "🎯 "*40)
     print("FUNDAMENTALS COMPOSITE VALIDATION")
     print("🎯 "*40)
-    print(f"\n✓ Using proper train/test splits from data_config.py")
-    print(f"✓ This prevents data leakage and ensures fair evaluation")
+    print("\n✓ Using proper train/test splits from data_config.py")
+    print("✓ This prevents data leakage and ensures fair evaluation")
 
     use_split = not a.no_split
     r = validate_with_proper_split(a.market, a.target, a.quantiles, use_test_split=use_split)
@@ -184,9 +183,9 @@ def main() -> int:
     print(f"\n{a.market} — fundamentals composite vs {a.target} (n={r['n']})")
     print(f"  metrics: {', '.join(r['metrics_used'])}")
     if r.get('used_test_split'):
-        print(f"  ✓ Evaluated on TEST split (unseen 2023-2024 data)")
+        print("  ✓ Evaluated on TEST split (unseen 2023-2024 data)")
     else:
-        print(f"  ⚠️  Evaluated on all available data")
+        print("  ⚠️  Evaluated on all available data")
 
     tbl = r["table"].copy()
     tbl["mean"] = (tbl["mean"] * 100).round(1)
@@ -199,8 +198,8 @@ def main() -> int:
         f"→ {'signal separates winners' if sp > 0 else 'no/negative separation'}"
     )
 
-    print(f"\n✅ Validation complete")
-    print(f"📖 For details on train/test splits, see DATA_VALIDATION_GUIDE.md")
+    print("\n✅ Validation complete")
+    print("📖 For details on train/test splits, see DATA_VALIDATION_GUIDE.md")
     return 0
 
 
