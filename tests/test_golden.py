@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -15,6 +16,28 @@ import cases  # noqa: E402
 GOLDEN = json.loads((Path(__file__).parent / "golden" / "baseline.json").read_text())
 
 
+_FLOAT = re.compile(r"-?\d+\.\d+(?:[eE][-+]?\d+)?")
+
+
+def _same(a, b):
+    """Deep equality; floats (also inside CSV/text strings) compare to 1e-9 relative, since
+    last-digit rounding of sums differs between CPU/BLAS builds."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_same(a[k], b[k]) for k in a)
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b))
+    if isinstance(a, float) and isinstance(b, float):
+        return a == pytest.approx(b, rel=1e-9, abs=1e-12)
+    if isinstance(a, str) and isinstance(b, str):
+        if a == b:
+            return True
+        if _FLOAT.sub("#", a) != _FLOAT.sub("#", b):
+            return False
+        fa, fb = _FLOAT.findall(a), _FLOAT.findall(b)
+        return all(float(x) == pytest.approx(float(y), rel=1e-9, abs=1e-12) for x, y in zip(fa, fb))
+    return a == b
+
+
 @pytest.fixture(scope="module")
 def current():
     return cases.collect_all()
@@ -23,4 +46,4 @@ def current():
 @pytest.mark.parametrize("module", sorted(GOLDEN))
 def test_matches_baseline(current, module):
     assert "CRASH" not in current[module], current[module].get("CRASH")
-    assert current[module] == GOLDEN[module]
+    assert _same(current[module], GOLDEN[module])

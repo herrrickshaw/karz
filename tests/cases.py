@@ -42,6 +42,17 @@ def _scrub(obj: Any, root: str) -> Any:
     return obj
 
 
+@contextlib.contextmanager
+def _freeze_clock(module):
+    """Pin ``module.datetime.now()`` so 'days stale' text matches the recorded baseline."""
+    real = module.datetime
+    module.datetime = _FrozenDatetime
+    try:
+        yield
+    finally:
+        module.datetime = real
+
+
 def _capture(fn: Callable[[], Any], root: str) -> Dict[str, Any]:
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -126,10 +137,18 @@ def _make_data_tree(root: Path) -> None:
         "y = df.sample(frac=0.5)\ntrain = all_data\n")
 
 
+class _FrozenDatetime(datetime):
+    """``datetime`` whose ``now()`` is the day the baseline was recorded (staleness is clock-dependent)."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 11, 2, 12, 0, 0)
+
+
 def case_data_validator() -> Dict[str, Any]:
     import data_validator as dv
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory() as tmp, _freeze_clock(dv):
         root = Path(tmp)
         _make_data_tree(root)
         validator = dv.DataValidator(base_path=str(root))
