@@ -33,7 +33,7 @@ def _diffs(a, b, path=""):
         return out
     if isinstance(a, list) and isinstance(b, list):
         if len(a) != len(b):
-            return [f"{path}: length {len(a)} != {len(b)}: {a!r:.200} vs {b!r:.200}"]
+            return [f"{path}: length {len(a)} != {len(b)}: {a!r:.120} vs {b!r:.120}"]
         return [d for i, (x, y) in enumerate(zip(a, b)) for d in _diffs(x, y, f"{path}[{i}]")]
     if isinstance(a, float) and isinstance(b, float):
         return [] if a == pytest.approx(b, rel=1e-9, abs=1e-12) else [f"{path}: {a!r} != {b!r}"]
@@ -44,8 +44,8 @@ def _diffs(a, b, path=""):
                 float(x) == pytest.approx(float(y), rel=1e-9, abs=1e-12)
                 for x, y in zip(_FLOAT.findall(a), _FLOAT.findall(b))):
             return []
-        return [f"{path}: {a!r:.300} != {b!r:.300}"]
-    return [] if a == b else [f"{path}: {a!r:.200} != {b!r:.200}"]
+        return [f"{path}: {a!r:.120} != {b!r:.120}"]
+    return [] if a == b else [f"{path}: {a!r:.120} != {b!r:.120}"]
 
 
 @pytest.fixture(scope="module")
@@ -56,4 +56,5 @@ def current():
 @pytest.mark.parametrize("module", sorted(GOLDEN))
 def test_matches_baseline(current, module):
     assert "CRASH" not in current[module], current[module].get("CRASH")
-    assert _diffs(current[module], GOLDEN[module]) == []
+    diffs = _diffs(current[module], GOLDEN[module])
+    assert not diffs, "\n".join(diffs)
