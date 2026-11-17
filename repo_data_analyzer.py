@@ -18,10 +18,13 @@ Usage:
 import ast
 import re
 from pathlib import Path
-from typing import Dict, List, Set, Tuple, Optional
+from typing import Dict, List, Set, Tuple, Optional, TYPE_CHECKING
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 import json
+
+if TYPE_CHECKING:  # only for the 'pd.DataFrame' annotations; pandas is imported lazily at runtime
+    import pandas as pd
 
 
 @dataclass
