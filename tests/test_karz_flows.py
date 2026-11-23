@@ -501,3 +501,109 @@ def test_kaggle_integrator_and_lineage():
     assert [c.get("operation", c.get("source")) for c in chain] == ["dropna", "file.csv"]
     assert chain[1]["records"] == 2 and chain[1]["columns"] == ["a"]
     assert t.get_lineage("unknown") == []
+
+
+# =============================== mutation-driven boundary tests ===============================
+
+def _metrics(**kw):
+    base = dict(n_signals=10, n_outperform=10, tp=5, fp=5, fn=5, tn=5, precision=0.5, recall=0.5, f1=0.5,
+                accuracy=0.5, avg_buy_return=1.0, avg_sell_return=0.0, return_spread=1.0)
+    base.update(kw)
+    return base
+
+
+def test_report_improvements_in_percentage_points_and_equal_marker(capsys):
+    bt = bwo.WeightBacktester(scored_frame())
+    bt.generate_report({"baseline": _metrics(), "optimized": _metrics(precision=0.6)})
+    out = capsys.readouterr().out
+    assert "Precision" in out and "+10.0pp" in out                          # (0.6 - 0.5) * 100
+    lines = {ln.split()[0]: ln for ln in out.splitlines() if ln.strip() and ln.split()[0] in ("Precision", "Recall")}
+    assert "✅" in lines["Precision"] and "=" in lines["Recall"] and "+0.0pp" in lines["Recall"]
+    assert "❌" not in lines["Recall"] and "✅" not in lines["Recall"]
+
+
+def test_data_source_default_is_the_test_split(monkeypatch):
+    df = scored_frame()
+    df["date"] = pd.to_datetime(["2022-06-01"] * 5 + ["2023-06-01"] * 15)
+    monkeypatch.setattr(pd, "read_parquet", lambda p: df.copy())
+    m = bwo.backtest_from_data_source("x.parquet", weight_set="baseline")["baseline"]
+    assert m["tp"] + m["fp"] + m["fn"] + m["tn"] == 15                    # only the 2023 rows
+
+
+def test_zero_spread_is_not_a_separation(stub_ca, monkeypatch, capsys):
+    perf = perf_frame()
+    perf["cagr"] = 0.05
+    monkeypatch.setattr(ca, "_perf_features", lambda m: perf.copy())
+    monkeypatch.setattr(sys, "argv", ["bwv", "--quantiles", "3", "--no-split"])
+    bwv.main()
+    assert "no/negative separation" in capsys.readouterr().out
+
+
+def test_used_test_split_requires_data_config(stub_ca, monkeypatch):
+    monkeypatch.setattr(bwv, "HAS_DATA_CONFIG", False)
+    assert bwv.validate("US", "cagr", q=3, use_test_split=True)["used_test_split"] is False
+
+
+def test_data_validator_null_threshold_and_gap_boundaries(tmp_path):
+    now = datetime.now().date()
+    n = 20
+    nulls = [None] * 3 + [1.0] * (n - 3)                                  # 15% nulls: above the 10% limit
+    dates = [str(now - timedelta(days=i)) for i in range(n)][::-1]
+    write_csv(tmp_path, "n15", {"symbol": ["A"] * n, "date": dates, "close": [1.0] * n, "x": nulls})
+    write_csv(tmp_path, "n10", {"symbol": ["A"] * n, "date": dates, "close": [1.0] * n,
+                                "x": [None] * 2 + [1.0] * (n - 2)})       # exactly 10%: not flagged
+    # 12 points spaced exactly 6 days apart -> 11 gaps (> 5 days) -> flagged; 11 points -> 10 gaps -> not flagged
+    six = [str(now - timedelta(days=6 * i)) for i in range(12)][::-1]
+    write_csv(tmp_path, "g11", {"symbol": ["A"] * 12, "date": six, "close": [1.0] * 12})
+    write_csv(tmp_path, "g10", {"symbol": ["A"] * 11, "date": six[1:], "close": [1.0] * 11})
+    v = dv.DataValidator(str(tmp_path))
+    metas = {m.source_name: m for m in v._scan_csv_files()}
+    for m in metas.values():
+        v._validate_single_source(m)
+    err = lambda name: " | ".join(metas[name].validation_errors)             # noqa: E731
+    assert "High nulls in ['x']" in err("n15") and "High nulls" not in err("n10")
+    assert "Many date gaps detected (11 gaps > 5 days)" in err("g11")
+    assert "Many date gaps" not in err("g10")
+
+
+def test_compile_report_without_scored_sources_averages_zero(tmp_path):
+    rep = dv.DataValidator(str(tmp_path))._compile_report([], [], [], {})
+    assert rep.avg_quality_score == 0.0 and rep.total_sources == 0
+
+
+def test_leakage_scan_reads_every_script(tmp_path):
+    for i in range(3):
+        (tmp_path / f"s{i}.py").write_text("x = df.shift(-1)\n")
+    issues = dv.DataValidator(str(tmp_path))._detect_data_leakage()
+    assert len({i.file_path for i in issues}) == 3
+
+
+def test_print_report_shows_at_most_five_recommendations(capsys):
+    rep = rda.RepositoryAnalysisReport(generated_at="t", total_scripts=0,
+                                       recommendations=[f"rec{i}" for i in range(1, 8)])
+    rep.print_report()
+    out = capsys.readouterr().out
+    assert "5. rec5" in out and "rec6" not in out
+
+
+def test_data_config_validation_boundaries():
+    import data_config as cfg
+    ok = pd.DataFrame({"close": [1.0] * 20, "x": [None] + [1.0] * 19})        # exactly 5% nulls
+    assert not any("nulls" in e for e in cfg.DataValidationRules.validate_dataframe(ok))
+    bad = pd.DataFrame({"close": [1.0] * 20, "x": [None] * 2 + [1.0] * 18})   # 10% nulls
+    assert any("Column x has 10.0% nulls" in e for e in cfg.DataValidationRules.validate_dataframe(bad))
+    closes = [1.0] * 100
+    closes[50:] = [3.0] * 50                                                    # one +200% move in 100 rows = 1%
+    assert not any("extreme" in e for e in
+                   cfg.DataValidationRules.validate_dataframe(pd.DataFrame({"close": closes})))
+    closes2 = [1.0, 3.0, 1.0] + [1.0] * 97                                      # two extreme moves = 2%
+    assert any("2 extreme daily moves" in e for e in
+               cfg.DataValidationRules.validate_dataframe(pd.DataFrame({"close": closes2})))
+
+
+def test_universe_consistency_threshold():
+    import data_config as cfg
+    syms = [f"S{i}" for i in range(10)]
+    uni = {"symbols": syms}
+    assert cfg.validate_universe_consistency(uni, pd.DataFrame({"symbol": syms[:8]})) == []       # exactly 80%
+    assert len(cfg.validate_universe_consistency(uni, pd.DataFrame({"symbol": syms[:7]}))) == 1
