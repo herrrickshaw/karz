@@ -54,3 +54,5 @@ htmlcov/
 # Config
 .env
 .env.local
+coverage.xml
+.coverage
